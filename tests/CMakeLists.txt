@@ -1,0 +1,6 @@
+foreach(t cue lyrics library queue_backup bulk)
+  add_executable(tst_${t} tst_${t}.cpp)
+  target_link_libraries(tst_${t} PRIVATE cadence_core Qt6::Test)
+  add_test(NAME ${t} COMMAND tst_${t})
+  set_tests_properties(${t} PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 120)
+endforeach()

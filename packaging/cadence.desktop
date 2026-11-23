@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Cadence
+GenericName=Music Player
+Comment=Offline music player
+Exec=cadence
+Icon=cadence
+Terminal=false
+Categories=AudioVideo;Audio;Player;Music;
