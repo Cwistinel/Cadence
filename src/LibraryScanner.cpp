@@ -1,3 +1,4 @@
+#include <QLocale>
 #include "LibraryScanner.h"
 #include "CueParser.h"
 #include "Database.h"
@@ -11,6 +12,7 @@
 #include <QMap>
 #include <QSet>
 #include <QUrl>
+#include <QDesktopServices>
 
 namespace {
 const QSet<QString> kExt{"mp3", "aac", "m4a", "flac", "ogg", "oga", "opus", "wav", "amr", "awb"};
@@ -136,6 +138,7 @@ void LibraryScanner::done(const Job &j, const QVariantList &ids, const QString &
     emit progressChanged();
     if (!msg.isEmpty()) emit message(msg);
     if (j.loose) emit imported(ids);
+    else Database::run("INSERT OR REPLACE INTO settings(key,value) VALUES('state/lastScan', ?)", {QString::number(QDateTime::currentSecsSinceEpoch())});
     emit libraryChanged();
     emit scanFinished(j.loose ? QString() : j.scope);
     next();
@@ -311,4 +314,34 @@ void LibraryScanner::clearHistory() {
     Database::run("UPDATE tracks SET play_count=0, last_played=0");
     db.commit();
     emit libraryChanged();
+}
+QString LibraryScanner::summary() const {
+    QSqlQuery q = Database::run("SELECT COUNT(*), COALESCE(SUM(size),0) FROM v_tracks");
+    qint64 n = 0, bytes = 0;
+    if (q.next()) { n = q.value(0).toLongLong(); bytes = q.value(1).toLongLong(); }
+    return tr("%1 tracks · %2").arg(QLocale().toString(n), QLocale().formattedDataSize(bytes, 1, QLocale::DataSizeSIFormat));
+}
+
+QVariantMap LibraryScanner::stats() const {
+    QSqlQuery q = Database::run("SELECT COUNT(*), COUNT(DISTINCT album||'|'||album_artist), COUNT(DISTINCT artist) FROM v_tracks");
+    QVariantMap m;
+    if (q.next()) { m["songs"] = q.value(0); m["albums"] = q.value(1); m["artists"] = q.value(2); }
+    return m;
+}
+
+QString LibraryScanner::lastScanText() const {
+    QSqlQuery q = Database::run("SELECT value FROM settings WHERE key='state/lastScan'");
+    const qint64 ts = q.next() ? q.value(0).toLongLong() : 0;
+    if (ts <= 0) return tr("No scan yet");
+    const QDateTime t = QDateTime::fromSecsSinceEpoch(ts);
+    const QDate today = QDate::currentDate();
+    const QString time = QLocale().toString(t.time(), QLocale::ShortFormat);
+    return t.date() == today ? tr("Last scan completed today at %1").arg(time)
+         : t.date() == today.addDays(-1) ? tr("Last scan completed yesterday at %1").arg(time)
+         : tr("Last scan completed %1").arg(QLocale().toString(t.date(), QLocale::ShortFormat));
+}
+
+void LibraryScanner::showInFolder(qint64 id) {
+    QSqlQuery q = Database::run("SELECT dir FROM tracks WHERE id=?", {id});
+    if (q.next()) QDesktopServices::openUrl(QUrl::fromLocalFile(q.value(0).toString()));
 }

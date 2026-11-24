@@ -2,18 +2,21 @@
 #include "Database.h"
 #include "LibraryScanner.h"
 #include "PlaybackController.h"
+#include <QDate>
 #include <QDateTime>
 #include <QFileInfo>
+#include <QLocale>
 
 namespace {
 constexpr int kPage = 300;
 
 struct Shape { QString cols, group; };
 Shape shape(const QString &m) {
-    if (m == "albums") return {"MIN(id),album,CASE WHEN album_artist<>'' THEN album_artist WHEN COUNT(DISTINCT artist)=1 THEN MIN(artist) ELSE '' END,album,album_artist,MIN(dir),COUNT(*),0,SUM(duration_ms),0", " GROUP BY album,album_artist"};
-    if (m == "artists") return {"MIN(id),artist,artist,'','',MIN(dir),COUNT(*),COUNT(DISTINCT album),SUM(duration_ms),0", " GROUP BY artist"};
-    if (m == "folders") return {"MIN(id),dir,'','','',dir,COUNT(*),0,SUM(duration_ms),0", " GROUP BY dir"};
-    return {"id,title,artist,album,album_artist,dir,1,track_no,duration_ms,favorite", ""};
+    const QString tail = QStringLiteral(",MAX(last_played),MAX(added_at),MAX(year)");
+    if (m == "albums") return {QStringLiteral("MIN(id),album,CASE WHEN album_artist<>'' THEN album_artist WHEN COUNT(DISTINCT artist)=1 THEN MIN(artist) ELSE '' END,album,album_artist,MIN(dir),COUNT(*),0,SUM(duration_ms),0") + tail, " GROUP BY album,album_artist"};
+    if (m == "artists") return {QStringLiteral("MIN(id),artist,artist,'','',MIN(dir),COUNT(*),COUNT(DISTINCT album),SUM(duration_ms),0") + tail, " GROUP BY artist"};
+    if (m == "folders") return {QStringLiteral("MIN(id),dir,'','','',dir,COUNT(*),0,SUM(duration_ms),0") + tail, " GROUP BY dir"};
+    return {"id,title,artist,album,album_artist,dir,1,track_no,duration_ms,favorite,last_played,added_at,year", ""};
 }
 
 QString order(const QString &m, const QString &s, bool desc) {
@@ -31,6 +34,7 @@ QString order(const QString &m, const QString &s, bool desc) {
     } else {
         if (s == "count") t = {"COUNT(*)"};
         else if (s == "added") t = {"MAX(added_at)"};
+        else if (s == "played") t = {"MAX(last_played)"};
         else t = {m == "albums" ? "lower(album)" : m == "artists" ? "lower(artist)" : "lower(dir)"};
         t << "MIN(id)";
     }
@@ -53,7 +57,8 @@ void LibraryModel::setMode(const QString &m) {
 
 QHash<int, QByteArray> LibraryModel::roleNames() const {
     return {{TrackIdRole, "trackId"}, {TitleRole, "title"}, {ArtistRole, "artist"}, {AlbumRole, "album"}, {AlbumArtistRole, "albumArtist"},
-            {FolderRole, "folder"}, {CountRole, "count"}, {ExtraRole, "extra"}, {DurationRole, "durationMs"}, {FavoriteRole, "favorite"}};
+            {FolderRole, "folder"}, {CountRole, "count"}, {ExtraRole, "extra"}, {DurationRole, "durationMs"}, {FavoriteRole, "favorite"},
+            {PlayedRole, "playedAt"}, {AddedRole, "addedAt"}, {YearRole, "year"}, {SectionRole, "section"}};
 }
 
 QVariant LibraryModel::data(const QModelIndex &ix, int role) const {
@@ -70,13 +75,32 @@ QVariant LibraryModel::data(const QModelIndex &ix, int role) const {
     case ExtraRole: return r.extra;
     case DurationRole: return r.durationMs;
     case FavoriteRole: return r.favorite;
+    case PlayedRole: return r.played;
+    case AddedRole: return r.added;
+    case YearRole: return r.year;
+    case SectionRole: {
+        const qint64 ts = m_sort == "added" ? r.added : r.played;
+        if (ts <= 0) return tr("Earlier");
+        const QDate d = QDateTime::fromSecsSinceEpoch(ts).date(), today = QDate::currentDate();
+        return d == today ? tr("Today") : d == today.addDays(-1) ? tr("Yesterday") : QLocale().toString(d, QStringLiteral("MMMM d"));
+    }
     }
     return {};
 }
 
+QVariantMap LibraryModel::get(int row) const {
+    QVariantMap m;
+    if (row < 0 || row >= m_rows.size()) return m;
+    const auto names = roleNames();
+    for (auto it = names.cbegin(); it != names.cend(); ++it) m.insert(QString::fromUtf8(it.value()), data(index(row), it.key()));
+    return m;
+}
+
+QString LibraryModel::sectionAt(int row) const { return row < 0 || row >= m_rows.size() ? QString() : data(index(row), SectionRole).toString(); }
+
 LibraryModel::Row LibraryModel::readRow(const QSqlQuery &q) {   // column order = Shape::cols
     return {q.value(0).toLongLong(), q.value(1).toString(), q.value(2).toString(), q.value(3).toString(), q.value(4).toString(), q.value(5).toString(),
-            q.value(6).toInt(), q.value(7).toInt(), q.value(8).toLongLong(), q.value(9).toBool()};
+            q.value(6).toInt(), q.value(7).toInt(), q.value(8).toLongLong(), q.value(9).toBool(), q.value(10).toLongLong(), q.value(11).toLongLong(), q.value(12).toInt()};
 }
 
 QString LibraryModel::where(const QVariantMap &f, QVariantList &a) {
@@ -108,17 +132,21 @@ void LibraryModel::reload() {
     const QString w = where(m_filters, a);
     const Shape s = shape(m_mode);
     QSqlQuery q = Database::run(s.group.isEmpty() ? "SELECT COUNT(*) FROM v_tracks WHERE " + w : "SELECT COUNT(*) FROM (SELECT 1 FROM v_tracks WHERE " + w + s.group + ")", a);
-    const int total = q.next() ? q.value(0).toInt() : 0;
+    int total = q.next() ? q.value(0).toInt() : 0;
+    if (m_limit > 0) total = qMin(total, m_limit);
     beginResetModel(); m_rows.clear(); m_total = total; endResetModel();
-    emit totalChanged();
     if (canFetchMore({})) fetchMore({});
+    emit totalChanged();                                   // after the first page is in: QML can read get(0) right away
 }
 
 void LibraryModel::fetchMore(const QModelIndex &) {
     QVariantList a;
     const QString w = where(m_filters, a);
     const Shape s = shape(m_mode);
-    a << kPage << int(m_rows.size());
+    int want = kPage;
+    if (m_limit > 0) want = qMin(want, m_limit - int(m_rows.size()));
+    if (want <= 0) return;
+    a << want << int(m_rows.size());
     QSqlQuery q = Database::run("SELECT " + s.cols + " FROM v_tracks WHERE " + w + s.group + " ORDER BY " + order(m_mode, m_sort, m_desc) + " LIMIT ? OFFSET ?", a);
     QList<Row> add;
     while (q.next()) add << readRow(q);
@@ -160,10 +188,14 @@ QVariantList LibraryModel::allIds() const {
     return out;
 }
 
-QStringList LibraryModel::distinct(const QString &c) const {
+QStringList LibraryModel::distinct(const QString &c) const { return distinctWhere(c, {}); }
+
+QStringList LibraryModel::distinctWhere(const QString &c, const QVariantMap &f) const {
     if (!QStringList{"genre", "artist", "album"}.contains(c)) return {};
+    QVariantList a;
+    const QString w = where(f, a);
     QStringList out;
-    QSqlQuery q = Database::run("SELECT DISTINCT " + c + " FROM v_tracks WHERE " + c + "<>'' ORDER BY lower(" + c + ")");
+    QSqlQuery q = Database::run("SELECT DISTINCT " + c + " FROM v_tracks WHERE " + c + "<>'' AND " + w + " ORDER BY lower(" + c + ")", a);
     while (q.next()) out << q.value(0).toString();
     return out;
 }

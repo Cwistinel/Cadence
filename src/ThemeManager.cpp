@@ -6,6 +6,8 @@
 #include <QtConcurrent>
 #include <cmath>
 #include <utility>
+#include <QGuiApplication>
+#include <QPalette>
 
 namespace {
 double lum(const QColor &c) {
@@ -77,16 +79,28 @@ void ThemeManager::onTrack() {   // trackChanged also fires for favorite/metadat
 }
 
 void ThemeManager::recompute() {
-    const QString m = mode();
-    const QColor base(0x2E, 0x6F, 0xD8);                 // fixed blue accent, a bit darker than before
+    const QString m = mode();                           // light | dark | system ("auto" from older settings = system)
+    bool dark = m == "dark";
+    if (m != "light" && m != "dark") dark = QGuiApplication::palette().color(QPalette::Window).lightness() < 128;
     Palette p;
-    p.dark = m != "light";
-    p.bg = m == "light" ? QColor(0xFA, 0xFA, 0xFA) : QColor(0x1E, 0x1F, 0x22);   // dark gray for Automatic and Dark
-    p.text = p.dark ? QColor(0xF5, 0xF5, 0xF5) : QColor(0x1A, 0x1A, 0x1A);
-    p.subtext = mix(p.text, p.bg, 0.4);
-    p.surface = mix(p.bg, p.text, p.dark ? 0.07 : 0.05);
-    p.accent = withContrast(base, p.bg, 3.0);
-    p.onAccent = contrast(Qt::black, p.accent) >= contrast(Qt::white, p.accent) ? QColor(Qt::black) : QColor(Qt::white);
+    p.dark = dark;
+    if (dark) {   // Figma "Dark"
+        p.bg = QColor("#151817"); p.side = QColor("#111411"); p.panel = QColor("#1c201d"); p.line = QColor("#30362f");
+        p.text = QColor("#f1f3ec"); p.muted = QColor("#a7afa1"); p.accent = QColor("#85b8ff"); p.tint = QColor("#213650");
+    } else {      // Figma "Light"
+        p.bg = QColor("#f6f7f2"); p.side = QColor("#edf0e8"); p.panel = QColor("#ffffff"); p.line = QColor("#dbe0d5");
+        p.text = QColor("#20271d"); p.muted = QColor("#596451"); p.accent = QColor("#1d4ed8"); p.tint = QColor("#e4eeff");
+    }
+    if (m_set->flag("ui/artColors", false) && m_art.isValid()) {   // Figma "Artwork": tones taken from the playing album
+        const float h = m_art.hslHueF() < 0 ? 0.f : m_art.hslHueF(), s = qBound(0.25f, m_art.hslSaturationF(), 0.7f);
+        if (dark) {
+            p.bg = QColor::fromHslF(h, 0.12f, 0.11f); p.side = QColor::fromHslF(h, 0.12f, 0.08f); p.panel = QColor::fromHslF(h, 0.12f, 0.14f);
+            p.line = QColor::fromHslF(h, 0.10f, 0.22f); p.tint = QColor::fromHslF(h, 0.30f, 0.22f); p.accent = QColor::fromHslF(h, s, 0.75f);
+        } else {
+            p.accent = withContrast(QColor::fromHslF(h, s, 0.36f), p.bg, 3.0); p.tint = QColor::fromHslF(h, 0.5f, 0.92f);
+        }
+    }
+    p.onAccent = lum(p.accent) > 0.4 ? QColor("#10150f") : QColor(Qt::white);
     m_p = p;
     emit themeChanged();
 }

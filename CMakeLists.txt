@@ -4,7 +4,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
-find_package(Qt6 6.2 REQUIRED COMPONENTS Core Gui Widgets Qml Quick QuickControls2 Sql DBus Concurrent)
+find_package(Qt6 6.2 REQUIRED COMPONENTS Core Gui Widgets Qml Quick QuickControls2 Sql DBus Concurrent Svg)
 find_package(Qt6 OPTIONAL_COMPONENTS Test)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(GST REQUIRED IMPORTED_TARGET gstreamer-1.0 gstreamer-pbutils-1.0)
@@ -16,7 +16,7 @@ list(FILTER CORE_SRC EXCLUDE REGEX "src/main\\.cpp$")
 add_library(cadence_core STATIC ${CORE_SRC})
 target_include_directories(cadence_core PUBLIC src)
 target_link_libraries(cadence_core PUBLIC Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Qml Qt6::Quick
-  Qt6::QuickControls2 Qt6::Sql Qt6::DBus Qt6::Concurrent PkgConfig::GST PkgConfig::TAGLIB)
+  Qt6::QuickControls2 Qt6::Sql Qt6::DBus Qt6::Concurrent Qt6::Svg PkgConfig::GST PkgConfig::TAGLIB)
 
 add_executable(cadence src/main.cpp)
 target_link_libraries(cadence PRIVATE cadence_core)

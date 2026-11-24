@@ -4,15 +4,16 @@
 #include <QQuickItem>
 #include <QTimer>
 
-// Port of LastWave's WavyProgressTrack: three thin gradient waves over the played bar, flat while scrubbing.
-// Frames are requested (~30 fps) only while playing and visible.
+// The Figma "Seekbar / Live player": a sine wave (amplitude 4.5, wavelength 36, stroke 2 on a 20 px high bar; scales with height),
+// accent-colored up to the thumb and muted after it, with a 10 px thumb. Frames are requested (~30 fps) only while playing and visible.
 class WavySeekbar : public QQuickItem {
     Q_OBJECT
     Q_PROPERTY(qreal position READ position WRITE setPosition NOTIFY positionChanged)      // ms
     Q_PROPERTY(qreal duration READ duration WRITE setDuration NOTIFY durationChanged)      // ms
     Q_PROPERTY(bool playing READ playing WRITE setPlaying NOTIFY playingChanged)
-    Q_PROPERTY(QColor accent READ accent WRITE setAccent NOTIFY accentChanged)
+    Q_PROPERTY(QColor accent READ accent WRITE setAccent NOTIFY accentChanged)             // played part
     Q_PROPERTY(QColor trackColor READ trackColor WRITE setTrackColor NOTIFY trackColorChanged)   // unplayed part
+    Q_PROPERTY(QColor thumbColor READ thumbColor WRITE setThumbColor NOTIFY thumbColorChanged)
     Q_PROPERTY(bool scrubbing READ scrubbing NOTIFY scrubbingChanged)
     Q_PROPERTY(qreal scrubPosition READ scrubPosition NOTIFY scrubPositionChanged)
 public:
@@ -22,6 +23,7 @@ public:
     bool playing() const { return m_playing; }
     QColor accent() const { return m_accent; }
     QColor trackColor() const { return m_track; }
+    QColor thumbColor() const { return m_thumb; }
     bool scrubbing() const { return m_drag; }
     qreal scrubPosition() const { return m_dragMs; }
     void setPosition(qreal v);
@@ -29,6 +31,7 @@ public:
     void setPlaying(bool v);
     void setAccent(const QColor &c);
     void setTrackColor(const QColor &c);
+    void setThumbColor(const QColor &c);
 
 signals:
     void positionChanged();
@@ -36,6 +39,7 @@ signals:
     void playingChanged();
     void accentChanged();
     void trackColorChanged();
+    void thumbColorChanged();
     void scrubbingChanged();
     void scrubPositionChanged();
     void seekRequested(qreal ms);
@@ -50,9 +54,9 @@ protected:
 private:
     void dragTo(qreal x);
     void syncTimer();
-    qreal m_pos = 0, m_dur = 0, m_dragMs = 0, m_clock = 0, m_flat = 0;
+    qreal m_pos = 0, m_dur = 0, m_dragMs = 0, m_phase = 0;
     bool m_playing = false, m_drag = false;
-    QColor m_accent{0xE8, 0xA8, 0x4C}, m_track{255, 255, 255, 56};
+    QColor m_accent{0x85, 0xB8, 0xFF}, m_track{0xA7, 0xAF, 0xA1}, m_thumb{0xF1, 0xF3, 0xEC};
     QElapsedTimer m_stamp, m_frame;
     QTimer m_tick;
 };

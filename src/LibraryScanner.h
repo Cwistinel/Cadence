@@ -4,15 +4,19 @@
 #include <QThreadPool>
 #include <QVariantList>
 #include <atomic>
+#include <QVariantMap>
 
 // Library manager: folder list, one background scan job at a time, drag-and-drop import, duplicates, history reset.
 // Files are never touched: rows are only added, updated or flagged missing.
 class LibraryScanner : public QObject {
     Q_OBJECT
+    Q_PROPERTY(QVariantMap stats READ stats NOTIFY libraryChanged)          // {songs, albums, artists}
+    Q_PROPERTY(QString lastScanText READ lastScanText NOTIFY libraryChanged)
     Q_PROPERTY(QStringList folders READ folders NOTIFY foldersChanged)
     Q_PROPERTY(bool scanning READ scanning NOTIFY scanningChanged)
     Q_PROPERTY(int progress READ progress NOTIFY progressChanged)
     Q_PROPERTY(int total READ total NOTIFY progressChanged)
+    Q_PROPERTY(QString summary READ summary NOTIFY libraryChanged)
 public:
     explicit LibraryScanner(QObject *parent = nullptr);
     ~LibraryScanner() override;
@@ -20,6 +24,9 @@ public:
     bool scanning() const { return m_running; }
     int progress() const { return m_progress; }
     int total() const { return m_total; }
+    QString summary() const;
+    QVariantMap stats() const;
+    QString lastScanText() const;
 
 public slots:
     void addFolder(const QString &path);              // path or file: URL
@@ -31,6 +38,7 @@ public slots:
     QVariantList duplicates();                        // [{reason, tracks:[{id,title,artist,album,path,durationMs,size}]}]
     void clearHistory();
     void reloadFolders() { loadFolders(); emit foldersChanged(); }   // after a restore replaced the folders table
+    void showInFolder(qint64 trackId);                // opens the track's folder in the file manager
 
 signals:
     void foldersChanged();

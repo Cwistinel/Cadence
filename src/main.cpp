@@ -24,6 +24,7 @@
 #include <QTimer>
 #include <QtQml>
 #include <QFontDatabase>
+#include "IconProvider.h"
 
 int main(int argc, char *argv[]) {
     QSurfaceFormat fmt;
@@ -78,6 +79,7 @@ int main(int argc, char *argv[]) {
 
     QQmlApplicationEngine qml;                           // declared last: destroyed first
     qml.addImageProvider("art", new ArtProvider);
+    qml.addImageProvider("icons", new IconProvider);
     QQmlContext *c = qml.rootContext();
     c->setContextProperty("pc", &pc);
     c->setContextProperty("settings", &settings);

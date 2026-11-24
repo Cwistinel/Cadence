@@ -6,227 +6,190 @@ import Cadence 1.0
 Item {
     id: v
     readonly property var app: Window.window
-    property string kind: "songs"          // songs|albums|artists|folders|favorites|played|added
-    property var drill: null               // drilled-into group filter
-    property var uf: ({})                  // user filters
-    property var sel: ({})                 // selected track ids (songs mode)
+    property string kind: "albums"           // songs | albums | artists | folders
+    property var drill: null                 // folder drill-down
+    property var uf: ({})                    // advanced filters
+    property string genre: ""
     property string query: ""
-    property string sortKey: "title"
-    property bool desc: false
+    property string sortKey: "added"
+    property bool desc: true
     readonly property string mode: drill ? "songs" : ({albums: "albums", artists: "artists", folders: "folders"})[kind] || "songs"
-    readonly property bool grid: (settings.revision, settings.flag("ui/grid"))
-    readonly property bool compact: (settings.revision, settings.flag("ui/compact"))
+    readonly property string viewKey: drill ? "songs" : kind
+    readonly property bool grid: (settings.revision, settings.text("ui/view/" + viewKey, viewKey === "albums" || viewKey === "artists" ? "grid" : "list") === "grid")
     readonly property var sortOpts: mode === "songs"
-        ? [{v: "title", t: qsTr("Title")}, {v: "artist", t: qsTr("Artist")}, {v: "album", t: qsTr("Album")}, {v: "trackNo", t: qsTr("Track no.")},
-           {v: "duration", t: qsTr("Length")}, {v: "added", t: qsTr("Date added")}, {v: "played", t: qsTr("Last played")}, {v: "plays", t: qsTr("Play count")}]
-        : [{v: "title", t: qsTr("Name")}, {v: "count", t: qsTr("Tracks")}, {v: "added", t: qsTr("Date added")}]
+        ? [{v: "added", t: qsTr("Recently added")}, {v: "title", t: qsTr("Title")}, {v: "artist", t: qsTr("Artist")}, {v: "album", t: qsTr("Album")}, {v: "trackNo", t: qsTr("Track no.")},
+           {v: "duration", t: qsTr("Length")}, {v: "played", t: qsTr("Last played")}, {v: "plays", t: qsTr("Play count")}]
+        : [{v: "added", t: qsTr("Recently added")}, {v: "title", t: qsTr("Name")}, {v: "count", t: qsTr("Tracks")}, {v: "played", t: qsTr("Last played")}]
+    readonly property string sortLabel: { for (var i = 0; i < sortOpts.length; ++i) if (sortOpts[i].v === sortKey) return sortOpts[i].t; return "" }
+    readonly property var st: scanner.stats
 
-    function alpha(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
-    function fmt(ms) { var t = Math.floor(ms / 1000); return Math.floor(t / 60) + ":" + ("0" + t % 60).slice(-2) }
-    function resetSort() { sortKey = kind === "played" ? "played" : kind === "added" ? "added" : "title"; desc = kind === "played" || kind === "added" }
+    function a(c, o) { return Qt.rgba(c.r, c.g, c.b, o) }
+    function resetSort() { sortKey = kind === "folders" ? "title" : "added"; desc = kind !== "folders" }
     function setF(k, val) { var o = Object.assign({}, uf); if (!val) delete o[k]; else o[k] = val; uf = o }
     function buildFilters() {
         var f = Object.assign({}, uf)
         if (query) f.text = query
-        if (kind === "favorites") f.favorite = true
-        if (kind === "played") f.recentlyPlayed = true
-        if (kind === "added") f.recentlyAdded = true
+        if (genre) f.genre = genre
         if (drill) f = Object.assign(f, drill)
         return f
     }
-    function more(view) { if (view.contentHeight - view.contentY - view.height < 800) lib.loadMore() }
-    function menuFor(info) {
-        var multi = mode === "songs" && sel[info.id] && Object.keys(sel).length > 1
-        ctx.ids = multi ? Object.keys(sel).map(Number) : lib.idsFor(info.i)
-        ctx.single = mode === "songs" && !multi ? info.id : 0
-        ctx.fav = info.fav
-        ctx.popup()
+    function genreOptions() {
+        var o = [{v: "", t: qsTr("All genres")}]
+        lib.distinct("genre").forEach(function (g) { o.push({v: g, t: g}) })
+        o.push({v: "::more", t: qsTr("More filters…")})
+        return o
     }
-    function clicked(info, m) {
-        if (m.button === Qt.RightButton) { menuFor(info); return }
-        if (mode === "albums") drill = {album: info.album, albumArtist: info.albumArtist}
-        else if (mode === "artists") drill = {artist: info.artist}
-        else if (mode === "folders") drill = {folder: info.folder}
-        else {
-            var s = (m.modifiers & Qt.ControlModifier) ? Object.assign({}, sel) : ({})
-            if (s[info.id] && (m.modifiers & Qt.ControlModifier)) delete s[info.id]; else s[info.id] = true
-            sel = s
-        }
-    }
-    function sub(info) {
-        if (mode === "songs") return info.artist + (info.album ? " — " + info.album : "")
-        if (mode === "albums") return (info.albumArtist || info.artist) + " · " + qsTr("%1 tracks").arg(info.count)
-        if (mode === "artists") return qsTr("%1 tracks").arg(info.count) + " · " + qsTr("%1 albums").arg(info.extra)
-        return info.folder
-    }
-    onKindChanged: { drill = null; uf = ({}); sel = ({}); search.text = ""; query = ""; resetSort() }
-    Component.onCompleted: resetSort()
+    onKindChanged: { drill = null; uf = ({}); genre = ""; resetSort() }
+    Component.onCompleted: { resetSort(); if (app.pendingQuery !== "") { head.setQuery(app.pendingQuery); app.pendingQuery = "" } }
 
     LibraryModel { id: lib; mode: v.mode; sort: v.sortKey; descending: v.desc; filters: v.buildFilters() }
-    TrackMenu { id: ctx; app: v.app }
-    Timer { id: deb; interval: 200; onTriggered: v.query = search.text }
-    Shortcut { sequence: "Ctrl+A"; enabled: v.visible && v.mode === "songs"; onActivated: { var s = ({}); lib.allIds().forEach(function (i) { s[i] = true }); v.sel = s } }
+    LibraryModel { id: recent; mode: "songs"; sort: "added"; descending: true; limit: 5 }
+    LibraryModel { id: allArtists; mode: "artists"; sort: "title" }
+    Connections { target: allArtists; function onRowsInserted() { allArtists.loadMore() } }
+    Timer { id: deb; interval: 200; onTriggered: v.query = head.query }
+    TrackMenu { id: recentMenu; app: v.app }
+
+    component TabChip: Rectangle {
+        id: tc
+        property string label
+        property bool on: false
+        signal clicked()
+        implicitHeight: 34; implicitWidth: tl.implicitWidth + 28; radius: 6
+        color: on ? theme.tint : tma.containsMouse ? v.a(theme.text, 0.05) : "transparent"
+        Behavior on color { ColorAnimation { duration: 140 } }
+        Label { id: tl; anchors.centerIn: parent; text: tc.label; font.pixelSize: 13; font.weight: Font.Medium; color: tc.on ? theme.accent : theme.muted }
+        MouseArea { id: tma; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: tc.clicked() }
+    }
 
     ColumnLayout {
-        anchors.fill: parent; anchors.leftMargin: 16; anchors.rightMargin: 16; anchors.topMargin: 4; anchors.bottomMargin: 8; spacing: 6
-        RowLayout {
-            Layout.preferredHeight: 44; spacing: 6
-            IconButton { visible: v.drill !== null; size: 34; glyph: "←"; tip: qsTr("Back"); onClicked: { v.drill = null; v.sel = ({}) } }
-            Rectangle {   // "Play all": accent text button, as in Harmonoid's library header
-                id: pa
-                enabled: lib.total > 0
-                Layout.preferredHeight: 40; Layout.preferredWidth: paRow.implicitWidth + 20
-                radius: 4; opacity: enabled ? 1 : 0.4
-                color: paMa.containsMouse ? v.alpha(theme.accent, 0.12) : "transparent"
-                RowLayout {
-                    id: paRow; anchors.centerIn: parent; spacing: 4
-                    Icon { Layout.preferredWidth: 22; Layout.preferredHeight: 22; name: "play"; color: theme.accent }
-                    Label { text: qsTr("Play all"); color: theme.accent; font.pixelSize: 15 }
+        anchors.fill: parent; anchors.leftMargin: 32; anchors.rightMargin: 32; anchors.topMargin: 21; spacing: 16
+
+        PageHeading {
+            id: head
+            Layout.fillWidth: true
+            title: v.drill ? lib.total >= 0 ? v.drill.folder.split("/").pop() : "" : v.kind === "songs" ? qsTr("Library · Songs") : v.kind === "albums" ? qsTr("Library") : v.kind === "artists" ? qsTr("Artists") : qsTr("Library · Folders")
+            subtitle: v.drill ? qsTr("%1 songs").arg(lib.total)
+                    : v.kind === "songs" ? qsTr("%1 songs · Stored on this device").arg(v.st.songs || 0)
+                    : v.kind === "albums" ? qsTr("%1 songs · %2 albums · %3 artists").arg(v.st.songs || 0).arg(v.st.albums || 0).arg(v.st.artists || 0)
+                    : v.kind === "artists" ? qsTr("%1 artists in your local library").arg(v.st.artists || 0) : qsTr("%1 folders").arg(lib.total)
+            onQueryChanged: deb.restart()
+        }
+
+        RowLayout {   // toolbar
+            Layout.fillWidth: true; Layout.preferredHeight: 38; spacing: 12
+            ActionButton { visible: v.drill !== null; text: "←  " + qsTr("Back"); onClicked: v.drill = null }
+            Row {
+                spacing: 12
+                Repeater {
+                    model: [{k: "songs", t: qsTr("Songs")}, {k: "albums", t: qsTr("Albums")}, {k: "artists", t: qsTr("Artists")}, {k: "folders", t: qsTr("Folders")}]
+                    delegate: TabChip { required property var modelData; label: modelData.t; on: v.kind === modelData.k; onClicked: v.app.page = modelData.k }
                 }
-                MouseArea { id: paMa; anchors.fill: parent; hoverEnabled: true; enabled: pa.enabled; cursorShape: Qt.PointingHandCursor; onClicked: pc.playTracks(lib.allIds()) }
             }
             Item { Layout.fillWidth: true }
-            TextField {
-                id: search
-                Layout.fillWidth: true; Layout.maximumWidth: 280; Layout.minimumWidth: 120; Layout.preferredHeight: 44
-                placeholderText: qsTr("Search title, artist, album, genre…")
-                onTextChanged: deb.restart()
-                background: Rectangle { radius: 22; color: theme.surface; border.width: search.activeFocus ? 2 : 0; border.color: theme.accent }
+            DropButton {
+                text: (v.genre || qsTr("All genres")) + " ⌄"
+                onAboutToOpen: options = v.genreOptions()
+                onPicked: (val) => { if (val === "::more") fp.open(); else v.genre = val }
             }
-            Button { flat: true; text: qsTr("Filters") + (Object.keys(v.uf).length ? " ●" : ""); onClicked: fp.open() }
-            ComboBox {
-                id: sortBox
-                textRole: "t"; valueRole: "v"; model: v.sortOpts
-                currentIndex: Math.max(0, indexOfValue(v.sortKey))
-                onActivated: v.sortKey = currentValue
+            DropButton {
+                text: v.sortLabel + " ⌄"
+                options: v.sortOpts
+                onPicked: (val) => { if (val === v.sortKey) v.desc = !v.desc; else { v.sortKey = val; v.desc = val === "added" || val === "played" || val === "plays" } }
             }
-            IconButton { size: 34; glyph: v.desc ? "↓" : "↑"; color: theme.subtext; tip: qsTr("Sort direction"); onClicked: v.desc = !v.desc }
-            IconButton { size: 34; glyph: v.grid ? "☰" : "▦"; color: theme.subtext; tip: v.grid ? qsTr("List view") : qsTr("Album grid"); onClicked: settings.setValue("ui/grid", !v.grid) }
-            IconButton { size: 34; glyph: "⇕"; active: v.compact; color: v.compact ? theme.accent : theme.subtext; tip: qsTr("Compact rows"); onClicked: settings.setValue("ui/compact", !v.compact) }
+            Rectangle {   // grid / list switch
+                Layout.preferredWidth: 64; Layout.preferredHeight: 38; radius: 8; color: theme.panel; border.width: 1; border.color: theme.line
+                Row {
+                    anchors.centerIn: parent; spacing: 12
+                    Label { text: "▦"; font.pixelSize: 15; color: v.grid ? theme.accent : theme.text
+                        MouseArea { anchors.fill: parent; anchors.margins: -5; cursorShape: Qt.PointingHandCursor; onClicked: settings.setValue("ui/view/" + v.viewKey, "grid") } }
+                    Label { text: "☷"; font.pixelSize: 15; color: !v.grid ? theme.accent : theme.text
+                        MouseArea { anchors.fill: parent; anchors.margins: -5; cursorShape: Qt.PointingHandCursor; onClicked: settings.setValue("ui/view/" + v.viewKey, "list") } }
+                }
+            }
         }
-        Label {
-            color: theme.subtext; font.pixelSize: 12
-            text: qsTr("%1 items").arg(lib.total) + (Object.keys(v.sel).length ? "  ·  " + qsTr("%1 selected").arg(Object.keys(v.sel).length) : "")
-        }
-        Item {
+
+        Loader {
             Layout.fillWidth: true; Layout.fillHeight: true
-            ListView {
-                id: list
-                anchors.fill: parent; visible: !v.grid; clip: true
-                model: v.grid ? null : lib; delegate: listRow
-                boundsBehavior: Flickable.StopAtBounds
-                ScrollBar.vertical: ScrollBar {}
-                onContentYChanged: v.more(list)
-                onCountChanged: v.more(list)
-            }
-            GridView {
-                id: gv
-                anchors.fill: parent; visible: v.grid; clip: true
-                cellWidth: 164; cellHeight: 228
-                model: v.grid ? lib : null; delegate: gridCell
-                boundsBehavior: Flickable.StopAtBounds
-                ScrollBar.vertical: ScrollBar {}
-                onContentYChanged: v.more(gv)
-                onCountChanged: v.more(gv)
-            }
-            Label {
-                visible: lib.total === 0; anchors.centerIn: parent; horizontalAlignment: Text.AlignHCenter; color: theme.subtext
-                text: scanner.folders.length === 0 ? qsTr("No music yet.\nAdd a folder in Settings, or drop one onto this window.") : qsTr("Nothing matches.")
-            }
+            sourceComponent: v.mode === "songs" && !v.grid ? songsComp : v.grid ? tilesComp : groupsComp
         }
     }
 
+    readonly property string emptyText: scanner.folders.length === 0 ? qsTr("No music yet.\nAdd a folder in Settings, or drop one onto this window.") : qsTr("Nothing matches.")
+
     Component {
-        id: listRow
-        Rectangle {
-            id: row
-            required property int index
-            required property var trackId
-            required property string title
-            required property string artist
-            required property string album
-            required property string albumArtist
-            required property string folder
-            required property int count
-            required property int extra
-            required property var durationMs
-            required property bool favorite
-            readonly property var info: ({i: index, id: trackId, title: title, artist: artist, album: album, albumArtist: albumArtist, folder: folder, count: count, extra: extra, fav: favorite})
-            readonly property bool cur: v.mode === "songs" && pc.track.id === trackId
-            width: ListView.view ? ListView.view.width : 0
-            height: v.compact ? 40 : 64
-            radius: 16
-            color: v.sel[trackId] ? v.alpha(theme.accent, 0.2) : ma.containsMouse ? v.alpha(theme.text, 0.06) : "transparent"
-            Behavior on color { ColorAnimation { duration: 140 } }
-            MouseArea {
-                id: ma; anchors.fill: parent; hoverEnabled: true; acceptedButtons: Qt.LeftButton | Qt.RightButton
-                onClicked: (m) => v.clicked(row.info, m)
-                onDoubleClicked: if (v.mode === "songs") pc.playTracks(lib.allIds(), row.index)
+        id: songsComp
+        TrackList {
+            lib: lib; showColumns: true; emptyText: v.emptyText
+            headerContent: Component {
+                Row {
+                    height: 54; spacing: 12
+                    ActionButton { primary: true; text: "▶  " + qsTr("Play all"); enabled: lib.total > 0; onClicked: pc.playTracks(lib.allIds()) }
+                    ActionButton { text: qsTr("Shuffle"); enabled: lib.total > 0; onClicked: v.app.shufflePlay(lib.allIds()) }
+                    Label { anchors.verticalCenter: undefined; y: 10; text: qsTr("All tracks are available offline"); font.pixelSize: 12; color: theme.muted }
+                }
             }
+        }
+    }
+    Component {
+        id: tilesComp
+        TileGrid {
+            lib: lib; kind: v.mode; emptyText: v.emptyText
+            onFolderOpened: (d) => v.drill = {folder: d}
+            footerContent: v.mode === "albums" ? albumsFooter : v.mode === "artists" ? artistsFooter : null
+        }
+    }
+    Component {
+        id: groupsComp
+        GroupList { lib: lib; kind: v.mode; emptyText: v.emptyText; onFolderOpened: (d) => v.drill = {folder: d} }
+    }
+
+    Component {
+        id: albumsFooter
+        Column {
+            width: parent ? parent.width : 0; spacing: 12; topPadding: 6
             RowLayout {
-                anchors.fill: parent; anchors.leftMargin: v.mode === "songs" ? 28 : 8; anchors.rightMargin: 8; spacing: 12
-                              Cover { visible: !v.compact; Layout.preferredWidth: 48; Layout.preferredHeight: 48; corner: 0.22; trackId: row.trackId; px: 96 }
-                ColumnLayout {
-                    Layout.fillWidth: true; spacing: 0
-                    Label { Layout.fillWidth: true; elide: Text.ElideRight; font.pixelSize: 15; font.weight: row.cur ? Font.DemiBold : Font.Normal; color: row.cur ? theme.accent : theme.text; text: row.title || qsTr("(Unknown)") }
-                    Label { visible: !v.compact; Layout.fillWidth: true; elide: Text.ElideRight; font.pixelSize: 13; color: theme.subtext; text: v.sub(row.info) }
-                }
-                Label { visible: v.compact; Layout.preferredWidth: 220; elide: Text.ElideRight; font.pixelSize: 13; color: theme.subtext; text: v.sub(row.info) }
-                Label { text: v.fmt(row.durationMs); font.pixelSize: 13; color: theme.subtext }
-                IconButton { visible: v.mode === "songs"; size: 28; glyph: row.favorite ? "♥" : "♡"; color: row.favorite ? theme.accent : theme.subtext; onClicked: pc.setFavorite(row.trackId, !row.favorite) }
-                IconButton { visible: v.mode !== "songs"; size: 30; icon: "play"; color: theme.accent; tip: qsTr("Play"); onClicked: pc.playTracks(lib.idsFor(row.index)) }
+                width: parent.width; spacing: 12
+                Label { Layout.fillWidth: true; text: qsTr("Recently added tracks"); font.pixelSize: 18; font.weight: Font.DemiBold }
+                Label { text: qsTr("View all →"); font.pixelSize: 12; color: theme.accent
+                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: v.app.showPage("added") } }
             }
-            Item {   // drag handle: songs onto the queue or a playlist
-                id: grip
-                visible: v.mode === "songs"
-                x: 2; y: 0; width: 24; height: row.height
-                z: Drag.active ? 10 : 1
-                Drag.active: gma.drag.active
-                Drag.keys: ["track"]
-                function ids() { return v.sel[row.trackId] ? Object.keys(v.sel).map(Number) : [row.trackId] }
-                Label { anchors.centerIn: parent; text: "⋮⋮"; color: theme.subtext }
-                MouseArea { id: gma; anchors.fill: parent; drag.target: grip; onReleased: { grip.Drag.drop(); grip.x = 2; grip.y = 0 } }
+            Repeater {
+                model: recent
+                delegate: TrackRow {
+                    width: parent.width
+                    playing: pc.track.id === trackId
+                    onPlayRequested: pc.playTracks(recent.allIds(), index)
+                    onFavoriteToggled: pc.setFavorite(trackId, !favorite)
+                    onMenuRequested: { recentMenu.ids = [trackId]; recentMenu.single = trackId; recentMenu.fav = favorite; recentMenu.popup() }
+                }
             }
         }
     }
-
     Component {
-        id: gridCell
-        Item {
-            id: cell
-            required property int index
-            required property var trackId
-            required property string title
-            required property string artist
-            required property string album
-            required property string albumArtist
-            required property string folder
-            required property int count
-            required property int extra
-            required property bool favorite
-            readonly property var info: ({i: index, id: trackId, title: title, artist: artist, album: album, albumArtist: albumArtist, folder: folder, count: count, extra: extra, fav: favorite})
-            width: 164; height: 228
-            Rectangle {
-                anchors.fill: parent; anchors.margins: 4; radius: 20
-                color: v.sel[cell.trackId] ? v.alpha(theme.accent, 0.2) : gma2.containsMouse ? v.alpha(theme.text, 0.06) : "transparent"
-                MouseArea {
-                    id: gma2; anchors.fill: parent; hoverEnabled: true; acceptedButtons: Qt.LeftButton | Qt.RightButton
-                    onClicked: (m) => v.clicked(cell.info, m)
-                    onDoubleClicked: if (v.mode === "songs") pc.playTracks(lib.allIds(), cell.index)
+        id: artistsFooter
+        Column {
+            width: parent ? parent.width : 0; spacing: 20; topPadding: 6; bottomPadding: 20
+            Label { text: qsTr("All artists  /  A–Z"); font.pixelSize: 16; font.weight: Font.Medium }
+            Flow {
+                width: parent.width; spacing: 48
+                Repeater {
+                    model: allArtists
+                    delegate: Label {
+                        required property string artist
+                        text: artist; font.pixelSize: 14; color: am.containsMouse ? theme.accent : theme.text
+                        MouseArea { id: am; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: v.app.openArtist(parent.artist) }
+                    }
                 }
-                Cover { x: 4; y: 4; width: 148; height: 148; corner: 0.12; trackId: cell.trackId; px: 320; scale: gma2.containsMouse ? 1.04 : 1; Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } } }
-                IconButton { x: 110; y: 110; size: 36; filled: true; icon: "play"; color: theme.onAccent; visible: gma2.containsMouse; onClicked: pc.playTracks(v.mode === "songs" ? lib.allIds() : lib.idsFor(cell.index), v.mode === "songs" ? cell.index : 0) }
-                Label { x: 4; y: 160; width: 148; elide: Text.ElideRight; font.pixelSize: 15; font.weight: Font.Medium; text: cell.title || qsTr("(Unknown)") }
-                Label { x: 4; y: 182; width: 148; elide: Text.ElideRight; font.pixelSize: 13; color: theme.subtext; text: v.sub(cell.info) }
             }
         }
     }
 
-    Popup {
+    Popup {   // "More filters…": the advanced filters
         id: fp
         parent: Overlay.overlay
         anchors.centerIn: parent
         modal: true; padding: 16; width: 380
+        background: Rectangle { color: theme.panel; border.color: theme.line; radius: 12 }
         contentItem: Loader { active: fp.visible; sourceComponent: filterForm }
     }
     Component {
@@ -235,14 +198,11 @@ Item {
             width: 348; spacing: 8
             property var artists: [qsTr("— any —")].concat(lib.distinct("artist"))
             property var albums: [qsTr("— any —")].concat(lib.distinct("album"))
-            property var genres: [qsTr("— any —")].concat(lib.distinct("genre"))
-            Label { text: qsTr("Filters"); font.bold: true; font.pixelSize: 16 }
+            Label { text: qsTr("Filters"); font.weight: Font.DemiBold; font.pixelSize: 16 }
             Label { text: qsTr("Artist") }
             ComboBox { Layout.fillWidth: true; model: parent.artists; currentIndex: Math.max(0, parent.artists.indexOf(v.uf.artist)); onActivated: v.setF("artist", currentIndex ? currentText : "") }
             Label { text: qsTr("Album") }
             ComboBox { Layout.fillWidth: true; model: parent.albums; currentIndex: Math.max(0, parent.albums.indexOf(v.uf.album)); onActivated: v.setF("album", currentIndex ? currentText : "") }
-            Label { text: qsTr("Genre") }
-            ComboBox { Layout.fillWidth: true; model: parent.genres; currentIndex: Math.max(0, parent.genres.indexOf(v.uf.genre)); onActivated: v.setF("genre", currentIndex ? currentText : "") }
             RowLayout {
                 Label { text: qsTr("Length (min) from"); Layout.fillWidth: true }
                 SpinBox { from: 0; to: 600; value: (v.uf.minDuration || 0) / 60; onValueModified: v.setF("minDuration", value * 60) }
@@ -254,9 +214,9 @@ Item {
             RowLayout { Label { text: qsTr("Added in the last 30 days"); Layout.fillWidth: true } Switch { checked: !!v.uf.recentlyAdded; onToggled: v.setF("recentlyAdded", checked) } }
             RowLayout { Label { text: qsTr("Played before"); Layout.fillWidth: true } Switch { checked: !!v.uf.recentlyPlayed; onToggled: v.setF("recentlyPlayed", checked) } }
             RowLayout {
-                Button { text: qsTr("Clear filters"); onClicked: { v.uf = ({}); fp.close() } }
+                ActionButton { text: qsTr("Clear filters"); onClicked: { v.uf = ({}); v.genre = ""; fp.close() } }
                 Item { Layout.fillWidth: true }
-                Button { text: qsTr("Done"); onClicked: fp.close() }
+                ActionButton { primary: true; text: qsTr("Done"); onClicked: fp.close() }
             }
         }
     }

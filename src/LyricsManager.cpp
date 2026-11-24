@@ -9,6 +9,7 @@
 #include <taglib/fileref.h>
 #include <taglib/tfile.h>
 #include <taglib/tpropertymap.h>
+#include <QLocale>
 
 namespace {
 QString local(const QString &s) { return s.startsWith("file:") ? QUrl(s).toLocalFile() : s; }
