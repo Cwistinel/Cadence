@@ -166,7 +166,7 @@ Item {
                 Row {
                     spacing: 2
                     Label { font.pixelSize: 13; font.weight: Font.Medium; text: (lyrics.offsetMs > 0 ? "+" : "") + lyrics.offsetMs }
-                    Label { font.pixelSize: 12; color: theme.muted; text: qsTr("ms"); anchors.baseline: undefined }
+                    Label { font.pixelSize: 12; color: theme.muted; text: qsTr("ms") }
                 }
                 ActionButton { implicitHeight: 36; text: qsTr("+100 ms"); enabled: lv.shown === "synced"; onClicked: lyrics.adjustOffset(100) }
             }

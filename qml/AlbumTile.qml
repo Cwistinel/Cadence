@@ -25,6 +25,5 @@ Item {
         id: ma; anchors.fill: parent; hoverEnabled: true; acceptedButtons: Qt.LeftButton | Qt.RightButton; cursorShape: Qt.PointingHandCursor
         onClicked: (m) => { if (m.button === Qt.RightButton) t.menu(); else t.activated() }
     }
-    IconButton { x: t.size - 44; y: t.size - 44; size: 36; iconSize: 18; filled: true; icon: "play"; color: theme.onAccent; visible: ma.containsMouse || hovered; tip: qsTr("Play"); onClicked: t.play()
-        readonly property bool hovered: false }
+    IconButton { x: t.size - 44; y: t.size - 44; size: 36; iconSize: 18; filled: true; icon: "play"; color: theme.onAccent; visible: ma.containsMouse; tip: qsTr("Play"); onClicked: t.play() }
 }
