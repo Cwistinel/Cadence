@@ -66,7 +66,10 @@ QImage ArtworkManager::image(qint64 id) {
     if (!lookup(id, s)) return {};
     const QString base = cacheDir() + '/' + s.key;
     if (QFile::exists(base + ".jpg")) { const QImage c(base + ".jpg"); if (!c.isNull()) return c; }
-    if (QFile::exists(base + ".none")) return {};
+    if (QFile::exists(base + ".none")) {
+        if (external(s.dir).isEmpty()) return {};   // still no cover: keep remembering
+        QFile::remove(base + ".none");              // a cover appeared since last check
+    }
 
     QImage img;
     if (const QByteArray b = Metadata::cover(s.path); !b.isEmpty()) img.loadFromData(b);

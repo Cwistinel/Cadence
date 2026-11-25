@@ -90,7 +90,7 @@ private:
     void fadeStep();
     void finishFade();
     void cancelFade();
-    void aboutToFinish();
+    void aboutToFinish();   // caller must hold m_mx
     PlayItem nextCopy() const { QMutexLocker l(&m_mx); return m_next; }
 
     static GstBusSyncReply busSync(GstBus *, GstMessage *m, gpointer u);

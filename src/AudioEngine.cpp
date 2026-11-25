@@ -73,11 +73,12 @@ GstBusSyncReply AudioEngine::monSync(GstBus *, GstMessage *m, gpointer u) {
 
 void AudioEngine::onAboutToFinish(GstElement *, gpointer u) {
     auto *c = static_cast<BusCtx *>(u);
-    if (c->idx == c->e->m_cur) c->e->aboutToFinish();   // runs on a streaming thread
+    QMutexLocker l(&c->e->m_mx);
+    if (c->idx != c->e->m_cur) return;
+    c->e->aboutToFinish();   // runs on a streaming thread, m_mx already held
 }
 
 void AudioEngine::aboutToFinish() {
-    QMutexLocker l(&m_mx);
     if (!m_gapless || !m_next.isValid() || m_next.startMs > 0) return;   // gapless needs a whole-file next item
     if (m_crossfadeMs > 0 && m_curDur > 2LL * m_crossfadeMs) return;    // crossfade owns this transition
     m_advItem = m_next; m_next = PlayItem(); m_advancePending = true;

@@ -128,9 +128,13 @@ QString LyricsManager::findFile(const Track &t) const {
         want << t.title;
         if (t.trackNo > 0) want << QString("%1 - %2").arg(t.trackNo, 2, 10, QChar('0')).arg(t.title) << QString("%1. %2").arg(t.trackNo, 2, 10, QChar('0')).arg(t.title);
     }
-    QList<QFileInfo> lrc;
-    for (const QFileInfo &f : QDir(fi.absolutePath()).entryInfoList(QDir::Files)) if (f.suffix().compare("lrc", Qt::CaseInsensitive) == 0) lrc << f;
+    QList<QFileInfo> lrc, txt;
+    for (const QFileInfo &f : QDir(fi.absolutePath()).entryInfoList(QDir::Files)) {
+        if (f.suffix().compare("lrc", Qt::CaseInsensitive) == 0) lrc << f;
+        else if (f.suffix().compare("txt", Qt::CaseInsensitive) == 0) txt << f;
+    }
     for (const QString &w : want) for (const QFileInfo &f : lrc) if (f.completeBaseName().compare(w, Qt::CaseInsensitive) == 0) return f.absoluteFilePath();
+    for (const QString &w : want) for (const QFileInfo &f : txt) if (f.completeBaseName().compare(w, Qt::CaseInsensitive) == 0) return f.absoluteFilePath();
     return {};
 }
 

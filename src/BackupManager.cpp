@@ -8,6 +8,7 @@
 #include <QHash>
 #include <QSet>
 #include <QStandardPaths>
+#include <QUuid>
 #include <QUrl>
 
 namespace {
@@ -30,9 +31,10 @@ QVariantMap BackupManager::create(const QString &target, bool overwrite) {
     m_pc->saveNow();                                           // queue and position are written lazily: make them current
     QFile::remove(tmp);
     if (!Database::run("VACUUM INTO " + lit(tmp)).isActive()) return fail(tr("Could not write the backup"));
+    const QString conn = QStringLiteral("bk-w-") + QUuid::createUuid().toString(QUuid::WithoutBraces);
     bool ok = false;
     {   // preferences + marker go into the copy, never into the live database
-        QSqlDatabase b = QSqlDatabase::addDatabase("QSQLITE", "bk-w");
+        QSqlDatabase b = QSqlDatabase::addDatabase("QSQLITE", conn);
         b.setDatabaseName(tmp);
         if (b.open()) {
             QSqlQuery q(b);
@@ -49,7 +51,7 @@ QVariantMap BackupManager::create(const QString &target, bool overwrite) {
         }
         b.close();
     }
-    QSqlDatabase::removeDatabase("bk-w");
+    QSqlDatabase::removeDatabase(conn);
     if (!ok) { QFile::remove(tmp); return fail(tr("Could not write the backup")); }
     QFile::remove(dest);
     if (!QFile::rename(tmp, dest)) { QFile::remove(tmp); return fail(tr("Could not save %1").arg(dest)); }
@@ -73,8 +75,9 @@ QVariantMap BackupManager::inspect(const QString &url) const {
     if (QSqlQuery m = Database::run("PRAGMA user_version"); m.next()) mine = m.value(0).toInt();
     QString err, created;
     int tracks = 0, playlists = 0;
+    const QString conn = QStringLiteral("bk-r-") + QUuid::createUuid().toString(QUuid::WithoutBraces);
     {
-        QSqlDatabase b = QSqlDatabase::addDatabase("QSQLITE", "bk-r");
+        QSqlDatabase b = QSqlDatabase::addDatabase("QSQLITE", conn);
         b.setDatabaseName(p);
         b.setConnectOptions("QSQLITE_OPEN_READONLY");
         if (!b.open()) err = tr("Not a readable backup");
@@ -102,7 +105,7 @@ QVariantMap BackupManager::inspect(const QString &url) const {
         }
         b.close();
     }
-    QSqlDatabase::removeDatabase("bk-r");
+    QSqlDatabase::removeDatabase(conn);
     if (!err.isEmpty()) return fail(err);
     return {{"ok", true}, {"created", created}, {"tracks", tracks}, {"playlists", playlists}};
 }

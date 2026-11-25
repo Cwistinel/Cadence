@@ -1,4 +1,4 @@
-foreach(t cue lyrics library queue_backup bulk)
+foreach(t cue lyrics library queue_backup bulk metadata)
   add_executable(tst_${t} tst_${t}.cpp)
   target_link_libraries(tst_${t} PRIVATE cadence_core Qt6::Test)
   add_test(NAME ${t} COMMAND tst_${t})

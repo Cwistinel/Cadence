@@ -265,8 +265,8 @@ void LibraryScanner::scan(const Job &j, QVariantList &outIds, QString &msg) {
         }
         const QString h = Metadata::quickHash(p);
         if (!h.isEmpty() && !have.contains(key(p, 0)) && !run("SELECT 1 FROM tracks WHERE path=? AND start_ms=0", {p}).next()) {
-            QSqlQuery q = run("SELECT id,path FROM tracks WHERE hash=? AND size=? AND start_ms=0 AND end_ms=0 AND path<>?", {h, sz, p});
-            while (q.next()) if (!QFile::exists(q.value(1).toString())) { run("UPDATE tracks SET path=? WHERE id=?", {p, q.value(0)}); break; }   // moved/renamed: keep the id and all user data
+            QSqlQuery q = run("SELECT id,path FROM tracks WHERE hash=? AND size=? AND duration_ms=? AND start_ms=0 AND end_ms=0 AND path<>?", {h, sz, t.durationMs, p});
+            while (q.next()) if (!QFile::exists(q.value(1).toString())) { run("UPDATE tracks SET path=?,mtime=?,size=? WHERE id=?", {p, mt, sz, q.value(0)}); break; }   // moved/renamed: keep the id and all user data
         }
         put(p, 0, 0, t.title.isEmpty() ? fi.completeBaseName() : t.title, t.artist, t.album, t.albumArtist, t.genre, t.trackNo, t.year, t.durationMs, mt, sz, h, QString(), t);
         seen << key(p, 0);
