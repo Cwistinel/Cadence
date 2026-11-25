@@ -17,6 +17,8 @@ class LyricsManager : public QObject {
     Q_PROPERTY(QString source READ source NOTIFY lyricsChanged)         // edited | file | embedded | none
     Q_PROPERTY(QString rawText READ rawText NOTIFY lyricsChanged)       // what the editor should start with
     Q_PROPERTY(int currentLine READ currentLine NOTIFY currentLineChanged)
+    Q_PROPERTY(int offsetMs READ offsetMs NOTIFY offsetChanged)         // live timing offset of the current track; + delays the lyrics
+    Q_PROPERTY(QString sourceName READ sourceName NOTIFY lyricsChanged) // file name, "Saved lyrics" or "Embedded lyrics"
 public:
     LyricsManager(PlaybackController *pc, UndoStack *undo, QObject *parent = nullptr);
     static LyricsDoc parse(const QString &text);
@@ -27,6 +29,8 @@ public:
     QString source() const { return m_source; }
     QString rawText() const { return m_raw; }
     int currentLine() const { return m_line; }
+    int offsetMs() const { return m_offset; }
+    QString sourceName() const { return m_name; }
 
 public slots:
     void reload();                                         // also after a backup restore
@@ -36,10 +40,14 @@ public slots:
     QString shift(const QString &text, qint64 deltaMs) const;   // preview helper: all timestamps + delta (clamped at 0)
     QVariantList parseText(const QString &text) const;     // [{ms, text}] for per-line editing
     QString compose(const QVariantList &lines) const;      // inverse of parseText (header tags are not kept)
+    void adjustOffset(int deltaMs);                        // ±100 ms buttons; remembered per track
+    bool loadFile(const QString &urlOrPath);               // stores a copy of an .lrc/.txt for the current track (the original is never touched)
+    QVariantList candidates() const;                       // [{name, path, same}] .lrc/.txt files next to the current track
 
 signals:
     void lyricsChanged();
     void currentLineChanged();
+    void offsetChanged();
 
 private:
     QString findFile(const Track &t) const;
@@ -52,4 +60,6 @@ private:
     QString m_raw, m_source = "none";
     qint64 m_id = 0;
     int m_line = -1;
+    int m_offset = 0;
+    QString m_name;
 };

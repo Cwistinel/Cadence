@@ -6,6 +6,7 @@ Rectangle {
     id: b
     property string text
     property bool primary: false
+    property color textColor: primary ? theme.onAccent : theme.text
     signal clicked()
     implicitHeight: 38; implicitWidth: lbl.implicitWidth + 32
     radius: 8
@@ -13,6 +14,6 @@ Rectangle {
     border.width: primary ? 0 : 1; border.color: theme.line
     opacity: !enabled ? 0.45 : ma.pressed ? 0.85 : 1
     Behavior on color { ColorAnimation { duration: 140 } }
-    Label { id: lbl; anchors.centerIn: parent; text: b.text; font.pixelSize: 13; font.weight: Font.Medium; color: b.primary ? theme.onAccent : theme.text }
+    Label { id: lbl; anchors.centerIn: parent; text: b.text; font.pixelSize: 13; font.weight: Font.Medium; color: b.textColor }
     MouseArea { id: ma; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: b.clicked() }
 }

@@ -27,6 +27,7 @@ public:
     QString summary() const;
     QVariantMap stats() const;
     QString lastScanText() const;
+    Q_INVOKABLE QString formatInfo(qint64 trackId) const;   // "FLAC · 24-bit / 96 kHz" (cached per track)
 
 public slots:
     void addFolder(const QString &path);              // path or file: URL

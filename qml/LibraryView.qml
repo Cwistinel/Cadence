@@ -35,14 +35,14 @@ Item {
     }
     function genreOptions() {
         var o = [{v: "", t: qsTr("All genres")}]
-        lib.distinct("genre").forEach(function (g) { o.push({v: g, t: g}) })
+        mainModel.distinct("genre").forEach(function (g) { o.push({v: g, t: g}) })
         o.push({v: "::more", t: qsTr("More filters…")})
         return o
     }
     onKindChanged: { drill = null; uf = ({}); genre = ""; resetSort() }
     Component.onCompleted: { resetSort(); if (app.pendingQuery !== "") { head.setQuery(app.pendingQuery); app.pendingQuery = "" } }
 
-    LibraryModel { id: lib; mode: v.mode; sort: v.sortKey; descending: v.desc; filters: v.buildFilters() }
+    LibraryModel { id: mainModel; mode: v.mode; sort: v.sortKey; descending: v.desc; filters: v.buildFilters() }
     LibraryModel { id: recent; mode: "songs"; sort: "added"; descending: true; limit: 5 }
     LibraryModel { id: allArtists; mode: "artists"; sort: "title" }
     Connections { target: allArtists; function onRowsInserted() { allArtists.loadMore() } }
@@ -67,11 +67,11 @@ Item {
         PageHeading {
             id: head
             Layout.fillWidth: true
-            title: v.drill ? lib.total >= 0 ? v.drill.folder.split("/").pop() : "" : v.kind === "songs" ? qsTr("Library · Songs") : v.kind === "albums" ? qsTr("Library") : v.kind === "artists" ? qsTr("Artists") : qsTr("Library · Folders")
-            subtitle: v.drill ? qsTr("%1 songs").arg(lib.total)
+            title: v.drill ? mainModel.total >= 0 ? v.drill.folder.split("/").pop() : "" : v.kind === "songs" ? qsTr("Library · Songs") : v.kind === "albums" ? qsTr("Library") : v.kind === "artists" ? qsTr("Artists") : qsTr("Library · Folders")
+            subtitle: v.drill ? qsTr("%1 songs").arg(mainModel.total)
                     : v.kind === "songs" ? qsTr("%1 songs · Stored on this device").arg(v.st.songs || 0)
                     : v.kind === "albums" ? qsTr("%1 songs · %2 albums · %3 artists").arg(v.st.songs || 0).arg(v.st.albums || 0).arg(v.st.artists || 0)
-                    : v.kind === "artists" ? qsTr("%1 artists in your local library").arg(v.st.artists || 0) : qsTr("%1 folders").arg(lib.total)
+                    : v.kind === "artists" ? qsTr("%1 artists in your local library").arg(v.st.artists || 0) : qsTr("%1 folders").arg(mainModel.total)
             onQueryChanged: deb.restart()
         }
 
@@ -119,12 +119,12 @@ Item {
     Component {
         id: songsComp
         TrackList {
-            lib: lib; showColumns: true; emptyText: v.emptyText
+            lib: mainModel; showColumns: true; emptyText: v.emptyText
             headerContent: Component {
                 Row {
                     height: 54; spacing: 12
-                    ActionButton { primary: true; text: "▶  " + qsTr("Play all"); enabled: lib.total > 0; onClicked: pc.playTracks(lib.allIds()) }
-                    ActionButton { text: qsTr("Shuffle"); enabled: lib.total > 0; onClicked: v.app.shufflePlay(lib.allIds()) }
+                    ActionButton { primary: true; text: "▶  " + qsTr("Play all"); enabled: mainModel.total > 0; onClicked: pc.playTracks(mainModel.allIds()) }
+                    ActionButton { text: qsTr("Shuffle"); enabled: mainModel.total > 0; onClicked: v.app.shufflePlay(mainModel.allIds()) }
                     Label { anchors.verticalCenter: undefined; y: 10; text: qsTr("All tracks are available offline"); font.pixelSize: 12; color: theme.muted }
                 }
             }
@@ -133,14 +133,14 @@ Item {
     Component {
         id: tilesComp
         TileGrid {
-            lib: lib; kind: v.mode; emptyText: v.emptyText
+            lib: mainModel; kind: v.mode; emptyText: v.emptyText
             onFolderOpened: (d) => v.drill = {folder: d}
             footerContent: v.mode === "albums" ? albumsFooter : v.mode === "artists" ? artistsFooter : null
         }
     }
     Component {
         id: groupsComp
-        GroupList { lib: lib; kind: v.mode; emptyText: v.emptyText; onFolderOpened: (d) => v.drill = {folder: d} }
+        GroupList { lib: mainModel; kind: v.mode; emptyText: v.emptyText; onFolderOpened: (d) => v.drill = {folder: d} }
     }
 
     Component {
@@ -196,8 +196,8 @@ Item {
         id: filterForm
         ColumnLayout {
             width: 348; spacing: 8
-            property var artists: [qsTr("— any —")].concat(lib.distinct("artist"))
-            property var albums: [qsTr("— any —")].concat(lib.distinct("album"))
+            property var artists: [qsTr("— any —")].concat(mainModel.distinct("artist"))
+            property var albums: [qsTr("— any —")].concat(mainModel.distinct("album"))
             Label { text: qsTr("Filters"); font.weight: Font.DemiBold; font.pixelSize: 16 }
             Label { text: qsTr("Artist") }
             ComboBox { Layout.fillWidth: true; model: parent.artists; currentIndex: Math.max(0, parent.artists.indexOf(v.uf.artist)); onActivated: v.setF("artist", currentIndex ? currentText : "") }

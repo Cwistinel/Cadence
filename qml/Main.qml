@@ -17,7 +17,7 @@ ApplicationWindow {
     property string libTab: "albums"
     property string pendingQuery: ""
     readonly property string navKey: page === "songs" || page === "albums" || page === "artists" || page === "folders" || page === "album" || page === "artist" ? "library"
-        : page === "playlist" ? "playlists" : page === "home" || page === "played" || page === "added" || page === "favorites" ? page : ""
+    : page === "playlist" || page === "playlists" ? "playlists" : page === "home" || page === "played" || page === "added" || page === "favorites" ? page : ""
 
     title: pc.hasTrack ? pc.track.title + " — Cadence" : "Cadence"
     minimumWidth: 900; minimumHeight: 560
@@ -36,21 +36,35 @@ ApplicationWindow {
     function showPage(p) { page = p }
     function toggleLyrics() { if (page === "lyrics") page = prevPage; else { prevPage = page; page = "lyrics" } }
     function srcFor(p) { return p === "now" ? "NowPlaying.qml" : p === "lyrics" ? "LyricsView.qml" : p === "settings" ? "SettingsView.qml" : p === "playlist" ? "PlaylistView.qml"
-        : p === "home" ? "HomeView.qml" : p === "favorites" ? "FavoritesView.qml" : p === "played" || p === "added" ? "RecentView.qml"
-        : p === "album" ? "AlbumPage.qml" : p === "artist" ? "ArtistPage.qml" : "LibraryView.qml" }
+    : p === "playlists" ? "PlaylistsView.qml" : p === "search" ? "SearchView.qml" : p === "home" ? "HomeView.qml" : p === "favorites" ? "FavoritesView.qml"
+    : p === "played" || p === "added" ? "RecentView.qml" : p === "album" ? "AlbumPage.qml" : p === "artist" ? "ArtistPage.qml" : "LibraryView.qml" }
     function goNav(k) {
-                if (k === "library") page = ["songs", "albums", "artists", "folders"].indexOf(page) >= 0 ? page : libTab
+        if (k === "library") page = ["songs", "albums", "artists", "folders"].indexOf(page) >= 0 ? page : libTab
+
         else if (k === "playlists") {
             if (playlists.playlists.length > 0) { plId = playlists.playlists[0].id; page = "playlist" }
             else askName(qsTr("New playlist"), "", function (n) { plId = playlists.create(n); page = "playlist" })
         } else page = k
-    }
+}
     function openAlbum(album, albumArtist) { detail = {album: album, albumArtist: albumArtist}; page = "album" }
     function openArtist(artist) { detail = {artist: artist}; page = "artist" }
     function shufflePlay(ids) { if (!ids || ids.length === 0) return; pc.shuffle = true; pc.playTracks(ids, Math.floor(Math.random() * ids.length)) }
-    function searchFor(text) { pendingQuery = text; page = "songs" }
-    function askName(title, initial, cb) { nameDlg.title = title; nameField.text = initial; nameDlg.cb = cb; nameDlg.open(); nameField.forceActiveFocus(); nameField.selectAll() }
-    function confirm(text, cb) { confirmDlg.cb = cb; confirmText.text = text; confirmDlg.open() }
+    function searchFor(text) { pendingQuery = text; page = "search" }
+    function openImport() { importDlg.open() }
+    function playlistById(id) { var l = playlists.playlists; for (var i = 0; i < l.length; ++i) if (l[i].id === id) return l[i]; return null }
+    function renamePlaylist(id) {
+        var p = playlistById(id); if (!p) return
+        nameDlg.mode = "rename"; nameDlg.count = p.count; nameDlg.cb = function (n) { playlists.rename(id, n) }; nameDlg.show(p.name)
+    }
+    function deletePlaylist(id) {
+        var p = playlistById(id); if (!p) return
+        confirmDlg.ask(qsTr("Delete playlist?"), qsTr("Delete “%1”?").arg(p.name),
+                       qsTr("This removes the playlist only. Your %1 music files stay exactly where they are.").arg(p.count), qsTr("Delete playlist"),
+                       function () { playlists.remove(id); page = "playlists" })
+    }
+    function addSongs(id) { addDlg.show(id) }
+    function askName(title, initial, cb) { nameDlg.mode = initial === "" ? "create" : "rename"; nameDlg.count = 0; nameDlg.cb = cb; nameDlg.show(initial) }
+    function confirm(text, cb) { confirmDlg.ask(qsTr("Please confirm"), text, "", qsTr("Confirm"), cb) }
     function openMeta(id) { metaDlg.edit(id) }
     function editLyrics() { lyricsDlg.edit() }
     function toast(t) { toastText.text = t; toastBox.opacity = 1; toastTimer.restart() }
@@ -148,7 +162,7 @@ ApplicationWindow {
         RowLayout {
             anchors.fill: parent; anchors.leftMargin: 12; spacing: 12
             Icon { Layout.preferredWidth: 20; Layout.preferredHeight: 20; name: ni.icon; color: ni.on ? theme.accent : theme.muted }
-            Label { visible: !win.collapsed; Layout.fillWidth: true; elide: Text.ElideRight; text: ni.label; font.pixelSize: 13; font.weight: Font.Medium; color: ni.on ? theme.accent : theme.muted }
+            Label { visible: !win.collapsed; Layout.topMargin: 14; text: ni.label; font.pixelSize: 10; font.weight: Font.DemiBold; font.letterSpacing: 0.8; color: theme.muted }
         }
         MouseArea {
             id: nma; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: ni.clicked()
@@ -362,22 +376,10 @@ ApplicationWindow {
     LyricsEditor { id: lyricsDlg }
     FileDialog { id: importDlg; nameFilters: [qsTr("Playlists (*.m3u *.m3u8)")]; onAccepted: win.importPlaylist(selectedFile.toString()) }
 
-    Dialog {
-        id: nameDlg
-        property var cb
-        parent: Overlay.overlay; anchors.centerIn: parent; modal: true; width: 360
-        standardButtons: Dialog.Ok | Dialog.Cancel
-        onAccepted: if (cb && nameField.text.trim() !== "") cb(nameField.text.trim())
-        TextField { id: nameField; width: parent.width; onAccepted: nameDlg.accept() }
-    }
-    Dialog {
-        id: confirmDlg
-        property var cb
-        parent: Overlay.overlay; anchors.centerIn: parent; modal: true; width: 420
-        title: qsTr("Please confirm"); standardButtons: Dialog.Yes | Dialog.No
-        onAccepted: if (cb) cb()
-        Label { id: confirmText; width: parent.width; wrapMode: Text.Wrap }
-    }
+    NameDialog { id: nameDlg }
+    ConfirmDialog { id: confirmDlg }
+    AddSongsDialog { id: addDlg }
+
     Dialog {
         id: noticeDlg
         parent: Overlay.overlay; anchors.centerIn: parent; modal: true; width: 480

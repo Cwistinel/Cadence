@@ -136,26 +136,30 @@ QString LyricsManager::findFile(const Track &t) const {
 
 void LyricsManager::reload() {
     const Track &t = m_pc->currentTrack();
-    m_id = t.id; m_raw.clear(); m_source = "none";
+    m_id = t.id; m_raw.clear(); m_source = "none"; m_name.clear();
     if (m_id) {
         QSqlQuery q = Database::run("SELECT content FROM lyrics WHERE track_id=?", {m_id});
-        if (q.next()) { m_raw = q.value(0).toString(); m_source = "edited"; }
-        else if (const QString f = findFile(t); !f.isEmpty()) { m_raw = readText(f); m_source = "file"; }
-        else if (!t.isVirtual()) { m_raw = embedded(t.path); m_source = "embedded"; }
+        if (q.next()) { m_raw = q.value(0).toString(); m_source = "edited"; m_name = tr("Saved lyrics"); }
+        else if (const QString f = findFile(t); !f.isEmpty()) { m_raw = readText(f); m_source = "file"; m_name = QFileInfo(f).fileName(); }
+        else if (!t.isVirtual()) { m_raw = embedded(t.path); m_source = "embedded"; m_name = tr("Embedded lyrics"); }
     }
-    if (m_raw.trimmed().isEmpty()) { m_raw.clear(); m_source = "none"; }
+    if (m_raw.trimmed().isEmpty()) { m_raw.clear(); m_source = "none"; m_name.clear(); }
+    m_offset = 0;
+    if (m_id) { QSqlQuery o = Database::run("SELECT value FROM settings WHERE key=?", {QStringLiteral("state/lyricsOffset/%1").arg(m_id)}); if (o.next()) m_offset = o.value(0).toInt(); }
     m_doc = parse(m_raw);
     m_lines.clear();
     for (const LyricLine &l : m_doc.lines) m_lines << QVariantMap{{"ms", l.ms}, {"text", l.text}};
     m_line = -1;
     emit lyricsChanged();
+    emit offsetChanged();
     onPosition(m_pc->position());
     emit currentLineChanged();
 }
 
-void LyricsManager::onPosition(qint64 ms) {   // binary search on the real engine position; emits only when the line changes
+void LyricsManager::onPosition(qint64 ms) {   // binary search on the engine position minus the live offset; emits only when the line changes
     if (!m_doc.synced) return;
-    const auto it = std::upper_bound(m_doc.lines.begin(), m_doc.lines.end(), ms, [](qint64 v, const LyricLine &l) { return v < l.ms; });
+    const qint64 pos = ms - m_offset;
+    const auto it = std::upper_bound(m_doc.lines.begin(), m_doc.lines.end(), pos, [](qint64 v, const LyricLine &l) { return v < l.ms; });
     const int i = int(it - m_doc.lines.begin()) - 1;
     if (i != m_line) { m_line = i; emit currentLineChanged(); }
 }
@@ -175,4 +179,30 @@ void LyricsManager::store(qint64 id, const QVariant &content) {
     if (content.isNull()) Database::run("DELETE FROM lyrics WHERE track_id=?", {id});
     else Database::run("INSERT OR REPLACE INTO lyrics(track_id,content) VALUES(?,?)", {id, content});
     if (id == m_id) reload();
+}
+
+void LyricsManager::adjustOffset(int delta) {
+    if (!m_id) return;
+    m_offset = qBound(-30000, m_offset + delta, 30000);
+    Database::run("INSERT OR REPLACE INTO settings(key,value) VALUES(?,?)", {QStringLiteral("state/lyricsOffset/%1").arg(m_id), QString::number(m_offset)});
+    emit offsetChanged();
+    onPosition(m_pc->position());
+}
+
+bool LyricsManager::loadFile(const QString &p) {
+    const QString text = readText(local(p));
+    if (text.trimmed().isEmpty()) return false;
+    save(text);
+    return true;
+}
+
+QVariantList LyricsManager::candidates() const {
+    QVariantList out;
+    const Track &t = m_pc->currentTrack();
+    if (!t.id) return out;
+    const QFileInfo fi(t.path);
+    for (const QFileInfo &f : QDir(fi.absolutePath()).entryInfoList({"*.lrc", "*.LRC", "*.txt", "*.TXT"}, QDir::Files, QDir::Name | QDir::IgnoreCase))
+        out << QVariantMap{{"name", f.fileName()}, {"path", f.absoluteFilePath()}, {"same", f.completeBaseName().compare(fi.completeBaseName(), Qt::CaseInsensitive) == 0}};
+    std::stable_sort(out.begin(), out.end(), [](const QVariant &a, const QVariant &b) { return a.toMap().value("same").toBool() > b.toMap().value("same").toBool(); });
+    return out;
 }

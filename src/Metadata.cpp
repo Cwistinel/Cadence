@@ -1,9 +1,12 @@
 #include "Metadata.h"
 #include <QCryptographicHash>
 #include <QFile>
+#include <QFileInfo>
 #include <QUrl>
 #include <gst/pbutils/pbutils.h>
 #include <taglib/fileref.h>
+#include <taglib/flacproperties.h>
+#include <taglib/wavproperties.h>
 #include <taglib/tag.h>
 #include <taglib/tfile.h>
 #include <taglib/tpropertymap.h>
@@ -88,4 +91,17 @@ QString Metadata::quickHash(const QString &path) {
     h.addData(f.read(N));
     if (f.size() > 2 * N) { f.seek(f.size() - N); h.addData(f.read(N)); }
     return QString::fromLatin1(h.result().toHex());
+}
+
+QString Metadata::format(const QString &path) {
+    const QString ext = QFileInfo(path).suffix().toUpper();
+    const TagLib::FileRef f(QFile::encodeName(path).constData());
+    if (f.isNull() || !f.audioProperties()) return ext;
+    const TagLib::AudioProperties *p = f.audioProperties();
+    int bits = 0;
+    if (auto *fl = dynamic_cast<const TagLib::FLAC::Properties *>(p)) bits = fl->bitsPerSample();
+    else if (auto *w = dynamic_cast<const TagLib::RIFF::WAV::Properties *>(p)) bits = w->bitsPerSample();
+    const QString khz = QString::number(p->sampleRate() / 1000.0, 'g', 4);
+    if (bits > 0) return QStringLiteral("%1 · %2-bit / %3 kHz").arg(ext).arg(bits).arg(khz);
+    return p->bitrate() > 0 ? QStringLiteral("%1 · %2 kbps · %3 kHz").arg(ext).arg(p->bitrate()).arg(khz) : QStringLiteral("%1 · %2 kHz").arg(ext, khz);
 }

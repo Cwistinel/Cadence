@@ -29,8 +29,14 @@ PlaylistManager::PlaylistManager(PlaybackController *pc, UndoStack *u, QObject *
 
 void PlaylistManager::reload() {
     m_lists.clear();
-    QSqlQuery q = Database::run("SELECT p.id,p.name,(SELECT COUNT(*) FROM playlist_items WHERE playlist_id=p.id) FROM playlists p ORDER BY lower(p.name),p.id");
-    while (q.next()) m_lists << QVariantMap{{"id", q.value(0)}, {"name", q.value(1)}, {"count", q.value(2)}};
+    QSqlQuery q = Database::run(
+        "SELECT p.id,p.name,(SELECT COUNT(*) FROM playlist_items WHERE playlist_id=p.id),"
+        "(SELECT track_id FROM playlist_items WHERE playlist_id=p.id ORDER BY pos LIMIT 1),"
+        "(SELECT COALESCE(SUM(t.duration_ms),0) FROM playlist_items i JOIN tracks t ON t.id=i.track_id WHERE i.playlist_id=p.id) "
+        "FROM playlists p ORDER BY lower(p.name),p.id");
+    while (q.next())
+        m_lists << QVariantMap{{"id", q.value(0)}, {"name", q.value(1)}, {"count", q.value(2)},
+                               {"cover", q.value(3).isNull() ? QVariant(0) : q.value(3)}, {"durationMs", q.value(4)}};
     emit playlistsChanged();
 }
 
@@ -71,13 +77,13 @@ int PlaylistManager::addTracks(qint64 id, const QVariantList &ids) {
 QVariantList PlaylistManager::items(qint64 id) const {
     QVariantList out;
     QSqlQuery q = Database::run(
-        "SELECT pi.id,pi.track_id,pi.pos,t.path,COALESCE(o.title,t.title),COALESCE(o.artist,t.artist),COALESCE(o.album,t.album),t.duration_ms,t.missing,(t.start_ms>0 OR t.end_ms>0) "
+        "SELECT pi.id,pi.track_id,pi.pos,t.path,COALESCE(o.title,t.title),COALESCE(o.artist,t.artist),COALESCE(o.album,t.album),t.duration_ms,t.missing,(t.start_ms>0 OR t.end_ms>0),t.favorite "
         "FROM playlist_items pi JOIN tracks t ON t.id=pi.track_id LEFT JOIN overrides o ON o.track_id=t.id WHERE pi.playlist_id=? ORDER BY pi.pos", {id});
     while (q.next()) {
         const QString path = q.value(3).toString(), title = q.value(4).toString();
         out << QVariantMap{{"itemId", q.value(0)}, {"trackId", q.value(1)}, {"pos", q.value(2)}, {"path", path},
                            {"title", title.isEmpty() ? QFileInfo(path).completeBaseName() : title}, {"artist", q.value(5)}, {"album", q.value(6)},
-                           {"durationMs", q.value(7)}, {"missing", q.value(8).toBool()}, {"virtual", q.value(9).toBool()}};
+                           {"durationMs", q.value(7)}, {"missing", q.value(8).toBool()}, {"virtual", q.value(9).toBool()}, {"favorite", q.value(10).toBool()}};
     }
     return out;
 }

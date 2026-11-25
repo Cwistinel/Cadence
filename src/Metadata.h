@@ -15,4 +15,5 @@ namespace Metadata {
 TagInfo read(const QString &path);        // TagLib first; GStreamer Discoverer for what TagLib can't parse (e.g. AMR)
 QByteArray cover(const QString &path);    // embedded cover bytes (empty if none); used by the ArtworkManager
 QString quickHash(const QString &path);   // SHA-1 of size + first and last 64 KiB
+QString format(const QString &path);      // "FLAC · 24-bit / 96 kHz" or "MP3 · 320 kbps · 44.1 kHz"
 }

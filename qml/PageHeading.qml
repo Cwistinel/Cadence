@@ -8,6 +8,7 @@ Item {
     property string title
     property string subtitle
     property bool searchable: true
+    property bool routeToSearch: true
     readonly property string query: field.text
     signal submitted(string text)
     implicitHeight: 70
@@ -34,7 +35,7 @@ Item {
                     placeholderText: qsTr("Search your music"); placeholderTextColor: theme.muted
                     font.pixelSize: 12; color: theme.text; selectByMouse: true
                     background: null; leftPadding: 0; rightPadding: 0; topPadding: 0; bottomPadding: 0
-                    onAccepted: h.submitted(text)
+                    onAccepted: { h.submitted(text); if (h.routeToSearch && text.trim() !== "") Window.window.searchFor(text) }
                 }
                 Label { visible: field.text === ""; text: "Ctrl K"; font.pixelSize: 10; color: theme.muted }
             }

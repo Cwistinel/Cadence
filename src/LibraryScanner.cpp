@@ -345,3 +345,12 @@ void LibraryScanner::showInFolder(qint64 id) {
     QSqlQuery q = Database::run("SELECT dir FROM tracks WHERE id=?", {id});
     if (q.next()) QDesktopServices::openUrl(QUrl::fromLocalFile(q.value(0).toString()));
 }
+
+QString LibraryScanner::formatInfo(qint64 id) const {
+    static QHash<qint64, QString> cache;
+    if (cache.contains(id)) return cache.value(id);
+    QSqlQuery q = Database::run("SELECT path FROM tracks WHERE id=?", {id});
+    const QString s = q.next() ? Metadata::format(q.value(0).toString()) : QString();
+    cache.insert(id, s);
+    return s;
+}
