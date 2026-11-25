@@ -161,8 +161,8 @@ ApplicationWindow {
         Behavior on color { ColorAnimation { duration: 140 } }
         RowLayout {
             anchors.fill: parent; anchors.leftMargin: 12; spacing: 12
-            Icon { Layout.preferredWidth: 20; Layout.preferredHeight: 20; name: ni.icon; color: ni.on ? theme.accent : theme.muted }
-            Label { visible: !win.collapsed; Layout.topMargin: 14; text: ni.label; font.pixelSize: 10; font.weight: Font.DemiBold; font.letterSpacing: 0.8; color: theme.muted }
+            Icon { Layout.preferredWidth: 20; Layout.preferredHeight: 20; Layout.alignment: Qt.AlignVCenter; name: ni.icon; color: ni.on ? theme.accent : theme.muted }
+            Label { visible: !win.collapsed; text: ni.label; Layout.alignment: Qt.AlignVCenter; font.pixelSize: 10; font.weight: Font.DemiBold; font.letterSpacing: 0.8; color: theme.muted }
         }
         MouseArea {
             id: nma; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: ni.clicked()

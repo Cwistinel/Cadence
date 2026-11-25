@@ -21,7 +21,7 @@ Item {
         return -1
     }
     readonly property string topKind: artistIdx >= 0 ? "artist" : albums.total > 0 ? "album" : songs.total > 0 ? "song" : ""
-    readonly property var top: topKind === "artist" ? artists.get(artistIdx) : topKind === "album" ? albums.get(0) : topKind === "song" ? songs.get(0) : ({})
+    readonly property var topResult: topKind === "artist" ? artists.get(artistIdx) : topKind === "album" ? albums.get(0) : topKind === "song" ? songs.get(0) : ({})
     readonly property var plMatches: playlists.playlists.filter(function (p) { return q !== "" && p.name.toLowerCase().indexOf(q.toLowerCase()) >= 0 })
     readonly property bool hasResults: topKind !== "" || plMatches.length > 0
 
@@ -71,12 +71,12 @@ Item {
                 ColumnLayout {
                     anchors.fill: parent; anchors.margins: 20; spacing: 10
                     Label { text: qsTr("TOP RESULT"); font.pixelSize: 10; font.weight: Font.DemiBold; font.letterSpacing: 0.8; color: theme.muted }
-                    Cover { Layout.preferredWidth: 150; Layout.preferredHeight: 150; rpx: 9; trackId: v.top.trackId || 0; px: 300 }
-                    Label { Layout.fillWidth: true; Layout.topMargin: 2; elide: Text.ElideRight; font.pixelSize: 22; font.weight: Font.DemiBold; text: v.top.title || "" }
+                    Cover { Layout.preferredWidth: 150; Layout.preferredHeight: 150; rpx: 9; trackId: v.topResult.trackId || 0; px: 300 }
+                    Label { Layout.fillWidth: true; Layout.topMargin: 2; elide: Text.ElideRight; font.pixelSize: 22; font.weight: Font.DemiBold; text: v.topResult.title || "" }
                     Label {
                         Layout.fillWidth: true; elide: Text.ElideRight; font.pixelSize: 12; color: theme.muted
-                        text: v.topKind === "artist" ? qsTr("Artist · %1 songs").arg(v.top.count || 0)
-                            : v.topKind === "album" ? qsTr("Album · %1").arg(v.top.artist || "") : qsTr("Song · %1").arg(v.top.artist || "")
+                        text: v.topKind === "artist" ? qsTr("Artist · %1 songs").arg(v.topResult.count || 0)
+                            : v.topKind === "album" ? qsTr("Album · %1").arg(v.topResult.artist || "") : qsTr("Song · %1").arg(v.topResult.artist || "")
                     }
                     Item { Layout.fillHeight: true }
                     ActionButton {
@@ -85,13 +85,13 @@ Item {
                         onClicked: {
                             if (v.topKind === "artist") pc.playTracks(artists.idsFor(v.artistIdx))
                             else if (v.topKind === "album") pc.playTracks(albums.idsFor(0))
-                            else pc.playTracks([v.top.trackId])
+                            else pc.playTracks([v.topResult.trackId])
                         }
                     }
                 }
                 MouseArea {
                     anchors.fill: parent; anchors.bottomMargin: 70; cursorShape: Qt.PointingHandCursor
-                    onClicked: { if (v.topKind === "artist") v.app.openArtist(v.top.artist); else if (v.topKind === "album") v.app.openAlbum(v.top.album, v.top.albumArtist) }
+                    onClicked: { if (v.topKind === "artist") v.app.openArtist(v.topResult.artist); else if (v.topKind === "album") v.app.openAlbum(v.topResult.album, v.topResult.albumArtist) }
                 }
             }
 
