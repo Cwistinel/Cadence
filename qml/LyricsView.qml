@@ -17,13 +17,13 @@ Item {
     readonly property int fsz: (settings.revision, settings.number("lyrics/fontSize", 24))
     readonly property int wgt: (settings.revision, settings.number("lyrics/fontWeight", 400))
     readonly property string align: (settings.revision, settings.text("lyrics/align", "center"))
-    readonly property string shown: !lyrics.hasLyrics ? "none" : (plainChosen || !lyrics.synced) ? "plain" : "synced"
+    readonly property string shown: !lyrics.hasLyrics || (!lyrics.synced && !(settings.revision, settings.flag("lyrics/plainFallback", true))) ? "none" : (plainChosen || !lyrics.synced) ? "plain" : "synced"
     readonly property bool following: followSetting && !paused
     readonly property string sourceText: lyrics.hasLyrics ? (lyrics.synced ? qsTr("Synchronized") : qsTr("Plain text")) + " · " + lyrics.sourceName : qsTr("No lyrics loaded")
     readonly property string badge: !lyrics.hasLyrics ? qsTr("LRC & TXT supported") : lyrics.synced ? qsTr("LRC · Synchronized lyrics") : qsTr("TXT · Untimed lyrics")
 
     function a(c, o) { return Qt.rgba(c.r, c.g, c.b, o) }
-    Connections { target: lyrics; function onLyricsChanged() { lv.plainChosen = false; lv.paused = false } function onCurrentLineChanged() { lv.auto = true; autoTimer.restart() } }
+    Connections { target: lyrics; function onLyricsChanged() { lv.plainChosen = settings.text("lyrics/defaultMode", "synced") === "plain"; lv.paused = false } function onCurrentLineChanged() { lv.auto = true; autoTimer.restart() } }
     Timer { id: autoTimer; interval: 600; onTriggered: lv.auto = false }
     LoadLyricsDialog { id: loadDlg; onBrowse: fd.open(); onFailed: lv.app.toast(qsTr("Could not read that lyrics file")) }
     FileDialog {

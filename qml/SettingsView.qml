@@ -1,151 +1,91 @@
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Dialogs
 import QtQuick.Layouts
 
 Item {
     id: sv
     readonly property var app: Window.window
-    function doBackup(url, over) {
-        var r = backup.create(url, over)
-        if (r.ok) app.toast(qsTr("Backup saved"))
-        else if (r.error === "exists") app.confirm(qsTr("The file already exists. Overwrite it?"), function () { sv.doBackup(url, true) })
-        else app.toast(r.error)
-    }
-    function startRestore(url) {
-        var i = backup.inspect(url)
-        if (!i.ok) { app.toast(i.error); return }
-        app.confirm(qsTr("Restore this backup?\nCreated: %1\n%2 tracks, %3 playlists.\n\nYour current data is replaced. A safety copy is saved first.").arg(i.created).arg(i.tracks).arg(i.playlists),
-                    function () { var r = backup.restore(url); app.toast(r.ok ? qsTr("Backup restored") : r.error) })
-    }
+    property int cat: 0
+    property var draft: ({})
+    readonly property int changes: Object.keys(draft).length
+    readonly property var cats: [
+        {t: qsTr("Appearance"), src: "SettingsAppearance.qml"}, {t: qsTr("Music Library"), src: "SettingsLibrary.qml"}, {t: qsTr("Playback"), src: "SettingsPlayback.qml"},
+        {t: qsTr("Audio"), src: "SettingsAudio.qml"}, {t: qsTr("Lyrics"), src: "SettingsLyrics.qml"}, {t: qsTr("Keyboard Shortcuts"), src: "SettingsShortcuts.qml"},
+        {t: qsTr("Notifications & Desktop"), src: "SettingsDesktop.qml"}]
+    readonly property var shortcutRows: [
+        {t: qsTr("Play / pause"), keys: ["keys/playPause"]}, {t: qsTr("Next track"), keys: ["keys/next"]}, {t: qsTr("Previous track"), keys: ["keys/prev"]},
+        {t: qsTr("Volume up / down"), keys: ["keys/volUp", "keys/volDown"]}, {t: qsTr("Toggle lyrics"), keys: ["keys/lyrics"]}, {t: qsTr("Show queue"), keys: ["keys/queue"]}]
+    readonly property var defs: ({
+        "ui/theme": "system", "ui/artColors": false, "ui/accent": "blue", "ui/density": "comfortable",
+        "library/monitor": true, "library/scanOnStart": true, "library/duplicates": true, "library/dupTolerance": 3000,
+        "audio/gapless": true, "audio/crossfadeMs": 0, "playback/shuffleStart": "last", "playback/repeatStart": "off", "audio/speed": 1.0,
+        "playback/resume": true, "audio/replayGain": "off", "audio/device": "", "audio/bufferMs": 200, "audio/rememberVolume": true, "audio/maxVolume": 1.0,
+        "lyrics/fontFamily": "", "lyrics/fontSize": 24, "lyrics/align": "center", "lyrics/follow": true, "lyrics/defaultMode": "synced", "lyrics/plainFallback": true,
+        "keys/playPause": "Space", "keys/next": "Ctrl+Right", "keys/prev": "Ctrl+Left", "keys/volUp": "Ctrl+Up", "keys/volDown": "Ctrl+Down", "keys/lyrics": "Ctrl+L", "keys/queue": "Ctrl+Q",
+        "ui/notifications": true, "ui/tray": true, "ui/closeToTray": false, "ui/mediaKeys": true, "ui/notificationDetail": "artist"})
 
-    component Section: Label { Layout.topMargin: 14; font.pixelSize: 18; font.bold: true; color: theme.accent }
-    component SwitchRow: RowLayout {
-        id: sr
-        property string key
-        property bool def: false
-        property string label
-        Layout.fillWidth: true
-        Label { text: sr.label; Layout.fillWidth: true }
-        Switch { checked: (settings.revision, settings.flag(sr.key, sr.def)); onToggled: settings.setValue(sr.key, checked) }
+    // Staged editing: controls read and write the draft; "Save changes" commits it to the real settings.
+    function get(k) { var r = settings.revision; return draft.hasOwnProperty(k) ? draft[k] : settings.value(k, defs[k]) }
+    function flag(k) { var v = get(k); return v === true || v === "true" }
+    function num(k) { return Number(get(k)) }
+    function txt(k) { return String(get(k)) }
+    function set(k, v) {
+        var d = Object.assign({}, draft)
+        if (String(settings.value(k, defs[k])) === String(v)) delete d[k]; else d[k] = v
+        draft = d
     }
-    component ComboRow: RowLayout {
-        id: cr
-        property string key
-        property string def
-        property string label
-        property var options: []
-        Layout.fillWidth: true
-        Label { text: cr.label; Layout.fillWidth: true }
-        ComboBox { textRole: "t"; valueRole: "v"; model: cr.options; currentIndex: (settings.revision, Math.max(0, indexOfValue(settings.text(cr.key, cr.def)))); onActivated: settings.setValue(cr.key, currentValue) }
-    }
+    function reset() { draft = ({}) }
+    function goCategory(i) { cat = i }
+    function save() { for (var k in draft) settings.setValue(k, draft[k]); draft = ({}); app.toast(qsTr("Settings saved")) }
+    function display(seq) { return seq === "" ? qsTr("None") : seq.replace(/\+/g, " ").replace("Right", "→").replace("Left", "←").replace("Up", "↑").replace("Down", "↓") }
+    function loadPage() { page.setSource(cats[cat].src, {s: sv}) }
+    onCatChanged: loadPage()
+    Component.onCompleted: { loadPage(); cycle.start() }
+    Timer { id: cycle; interval: 2500; repeat: true; onTriggered: sv.cat = (sv.cat + 1) % 7 }
 
-    FolderDialog { id: fd; onAccepted: scanner.addFolder(selectedFolder.toString()) }
-    FileDialog { id: saveDlg; fileMode: FileDialog.SaveFile; defaultSuffix: "cadbak"; nameFilters: [qsTr("Cadence backup (*.cadbak)")]; onAccepted: sv.doBackup(selectedFile.toString(), false) }
-    FileDialog { id: openDlg; nameFilters: [qsTr("Cadence backup (*.cadbak)")]; onAccepted: sv.startRestore(selectedFile.toString()) }
-    Dialog {
-        id: dupDlg
-        property var groups: []
-        parent: Overlay.overlay; anchors.centerIn: parent; modal: true
-        width: Math.min(parent.width - 40, 760); height: Math.min(parent.height - 40, 560)
-        title: qsTr("Possible duplicates"); standardButtons: Dialog.Close
-        ColumnLayout {
-            anchors.fill: parent
-            Label { Layout.fillWidth: true; wrapMode: Text.Wrap; color: theme.subtext; text: dupDlg.groups.length === 0 ? qsTr("No duplicates found.") : qsTr("Review only. Cadence never deletes or changes your files.") }
-            ListView {
-                Layout.fillWidth: true; Layout.fillHeight: true; clip: true; model: dupDlg.groups; spacing: 10
-                ScrollBar.vertical: ScrollBar {}
-                delegate: Column {
-                    id: gr
-                    required property var modelData
-                    width: ListView.view.width; spacing: 2
-                    Label { text: gr.modelData.reason; font.bold: true; color: theme.accent }
-                    Repeater {
-                        model: gr.modelData.tracks
-                        Label { required property var modelData; width: gr.width; elide: Text.ElideMiddle; font.pixelSize: 12; text: modelData.artist + " — " + modelData.title + "   " + modelData.path }
+    RowLayout {
+        anchors.fill: parent; spacing: 0
+        Rectangle {   // settings navigation
+            Layout.preferredWidth: 256; Layout.fillHeight: true; color: theme.side
+            ColumnLayout {
+                anchors.fill: parent; anchors.leftMargin: 20; anchors.rightMargin: 20; anchors.topMargin: 18; spacing: 6
+                Label { Layout.bottomMargin: 10; text: "Cadence"; font.pixelSize: 24; font.weight: Font.DemiBold }
+                ActionButton { implicitHeight: 36; text: "←  " + qsTr("Back to music"); onClicked: sv.app.showPage(sv.app.settingsBack) }
+                Label { Layout.topMargin: 14; text: qsTr("Settings"); font.pixelSize: 18; font.weight: Font.DemiBold }
+                Repeater {
+                    model: sv.cats
+                    delegate: Rectangle {
+                        id: ci
+                        required property int index
+                        required property var modelData
+                        readonly property bool on: sv.cat === index
+                        Layout.fillWidth: true; Layout.preferredHeight: 40; radius: 7
+                        color: on ? theme.tint : cma.containsMouse ? Qt.rgba(theme.text.r, theme.text.g, theme.text.b, 0.05) : "transparent"
+                        Behavior on color { ColorAnimation { duration: 140 } }
+                        Label { x: 12; anchors.verticalCenter: parent.verticalCenter; text: ci.modelData.t; font.pixelSize: 13; font.weight: Font.Medium; color: ci.on ? theme.accent : theme.muted }
+                        MouseArea { id: cma; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: sv.cat = ci.index }
                     }
                 }
+                Item { Layout.fillHeight: true }
             }
         }
-    }
-
-    ScrollView {
-        id: scroll
-        anchors.fill: parent
-        contentWidth: availableWidth
         ColumnLayout {
-            x: 20; width: scroll.availableWidth - 40; spacing: 8
-
-            Section { text: qsTr("Library") }
-            Repeater {
-                model: scanner.folders
+            Layout.fillWidth: true; Layout.fillHeight: true
+            Layout.leftMargin: 36; Layout.rightMargin: 36; Layout.topMargin: 26; Layout.bottomMargin: 14; spacing: 16
+            Loader { id: page; Layout.fillWidth: true; Layout.fillHeight: true }
+            Item {   // save bar
+                Layout.fillWidth: true; Layout.preferredHeight: 62
+                Rectangle { width: parent.width; height: 1; color: theme.line }
                 RowLayout {
-                    required property string modelData
-                    Layout.fillWidth: true
-                    Label { Layout.fillWidth: true; elide: Text.ElideMiddle; text: modelData }
-                    Button { text: qsTr("Rescan"); onClicked: scanner.rescan(modelData) }
-                    Button { text: qsTr("Remove"); onClicked: sv.app.confirm(qsTr("Remove this folder from the library? Files are not touched; favorites and playlists are kept."), function () { scanner.removeFolder(modelData) }) }
+                    anchors.fill: parent; anchors.topMargin: 8; spacing: 12
+                    Label {
+                        Layout.fillWidth: true; font.pixelSize: 12; color: sv.changes > 0 ? theme.accent : theme.muted
+                        text: sv.changes > 0 ? "●  " + (sv.changes === 1 ? qsTr("1 unsaved change") : qsTr("%1 unsaved changes").arg(sv.changes)) : "✓  " + qsTr("All changes saved locally")
+                    }
+                    ActionButton { implicitHeight: 36; text: qsTr("Reset changes"); enabled: sv.changes > 0; onClicked: sv.reset() }
+                    ActionButton { implicitHeight: 40; primary: true; text: qsTr("Save changes"); enabled: sv.changes > 0; onClicked: sv.save() }
                 }
             }
-            RowLayout {
-                Button { text: qsTr("Add folder…"); onClicked: fd.open() }
-                Button { text: qsTr("Rescan all"); enabled: scanner.folders.length > 0 && !scanner.scanning; onClicked: scanner.rescanAll() }
-                Button { text: qsTr("Cancel scan"); visible: scanner.scanning; onClicked: scanner.cancel() }
-                Button { text: qsTr("Find duplicates"); onClicked: { dupDlg.groups = scanner.duplicates(); dupDlg.open() } }
-            }
-            ProgressBar { visible: scanner.scanning; Layout.fillWidth: true; from: 0; to: Math.max(1, scanner.total); value: scanner.progress }
-            SwitchRow { label: qsTr("Watch folders for changes"); key: "library/monitor"; def: true }
-            SwitchRow { label: qsTr("Rescan at startup"); key: "library/scanOnStart"; def: true }
-            Button { text: qsTr("Clear listening history…"); onClicked: sv.app.confirm(qsTr("Clear play counts and recently played? Favorites are kept."), function () { scanner.clearHistory() }) }
-
-            Section { text: qsTr("Appearance & desktop") }
-            ComboRow { label: qsTr("Theme"); key: "ui/theme"; def: "auto"; options: [{v: "auto", t: qsTr("Automatic (album art)")}, {v: "light", t: qsTr("Light")}, {v: "dark", t: qsTr("Dark")}] }
-            SwitchRow { label: qsTr("Close to tray (keeps playing)"); key: "ui/closeToTray"; def: false; enabled: desktop.trayAvailable }
-            SwitchRow { label: qsTr("Notify on track change"); key: "ui/notifications"; def: true }
-
-            Section { text: qsTr("Playback") }
-            SwitchRow { label: qsTr("Gapless playback"); key: "audio/gapless"; def: true }
-            RowLayout {
-                Layout.fillWidth: true
-                Label { Layout.fillWidth: true; text: qsTr("Crossfade") + ": " + ((settings.revision, settings.number("audio/crossfadeMs", 0)) === 0 ? qsTr("off") : ((settings.number("audio/crossfadeMs", 0) / 1000).toFixed(1) + " s")) }
-                ThemedSlider { Layout.preferredWidth: 220; from: 0; to: 12000; stepSize: 500; bound: (settings.revision, settings.number("audio/crossfadeMs", 0)); onMoved: settings.setValue("audio/crossfadeMs", Math.round(value)) }
-            }
-            Label { Layout.fillWidth: true; wrapMode: Text.Wrap; color: theme.subtext; font.pixelSize: 12; text: qsTr("Crossfade is separate from gapless. When it is on, fades handle track changes; tracks too short to fade stay gapless.") }
-            ComboRow { label: qsTr("ReplayGain"); key: "audio/replayGain"; def: "off"; options: [{v: "off", t: qsTr("Off")}, {v: "track", t: qsTr("Track")}, {v: "album", t: qsTr("Album")}] }
-            RowLayout {
-                Layout.fillWidth: true
-                Label { Layout.fillWidth: true; text: qsTr("Speed") + ": " + pc.speed.toFixed(2) + "×" }
-                ThemedSlider { Layout.preferredWidth: 220; from: 0.5; to: 2.0; stepSize: 0.05; bound: pc.speed; onMoved: pc.setSpeed(value) }
-                Button { text: "1×"; onClicked: pc.setSpeed(1.0) }
-            }
-            RowLayout {
-                Layout.fillWidth: true
-                Label { text: qsTr("Output device"); Layout.fillWidth: true }
-                ComboBox {
-                    Layout.preferredWidth: 280
-                    model: [qsTr("System default")].concat(pc.devices)
-                    currentIndex: Math.max(0, pc.device === "" ? 0 : pc.devices.indexOf(pc.device) + 1)
-                    onActivated: pc.setDevice(currentIndex === 0 ? "" : currentText)
-                }
-            }
-
-            Section { text: qsTr("Backup & recovery") }
-            Label { Layout.fillWidth: true; wrapMode: Text.Wrap; color: theme.subtext; font.pixelSize: 12; text: qsTr("A backup holds your library data, favorites, history, playlists, lyrics and metadata edits, queue and settings. It never contains music files. Backups can be saved to a USB drive. An automatic daily backup is kept in %1.").arg(backup.backupDir) }
-            RowLayout {
-                Button { text: qsTr("Create backup…"); onClicked: saveDlg.open() }
-                Button { text: qsTr("Restore backup…"); onClicked: openDlg.open() }
-                Button {
-                    text: qsTr("Check database")
-                    onClicked: { var r = backup.checkIntegrity(); sv.app.toast(r === "ok" ? qsTr("Database is healthy") : backup.recover()) }
-                }
-            }
-
-            Section { text: qsTr("Keyboard shortcuts") }
-            Label {
-                Layout.fillWidth: true; wrapMode: Text.Wrap; lineHeight: 1.3
-                text: qsTr("Space  play / pause\n← / →  seek 5 s back / forward\nCtrl+← / Ctrl+→  previous / next track\nCtrl+↑ / Ctrl+↓  volume up / down\nM  mute\nQ  show / hide queue\nL  show / hide lyrics\nF  favorite the current track\nCtrl+M  mini-player\nCtrl+Z  undo\nCtrl+A  select all songs in the list\nMedia keys  play, pause, stop, previous, next (also from headsets and the desktop's media controls)")
-            }
-            Item { Layout.preferredHeight: 30 }
         }
     }
 }

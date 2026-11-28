@@ -36,6 +36,7 @@ AudioEngine::~AudioEngine() {
     gst_object_unref(m_mon);
     for (Deck &d : m_deck) if (d.play) {
         g_signal_handlers_disconnect_by_data(d.play, &d.ctx);
+        g_signal_handlers_disconnect_by_data(d.play, this);
         GstBus *bb = gst_element_get_bus(d.play);
         gst_bus_set_sync_handler(bb, nullptr, nullptr, nullptr);
         gst_object_unref(bb);
@@ -78,6 +79,12 @@ void AudioEngine::onAboutToFinish(GstElement *, gpointer u) {
     c->e->aboutToFinish();   // runs on a streaming thread, m_mx already held
 }
 
+void AudioEngine::onDeepElement(GstBin *, GstBin *, GstElement *el, gpointer u) {   // tunes the audio sink's buffer when playbin creates it
+    auto *e = static_cast<AudioEngine *>(u);
+    if (isAudioSink(GST_OBJECT(el)) && g_object_class_find_property(G_OBJECT_GET_CLASS(el), "buffer-time"))
+        g_object_set(el, "buffer-time", gint64(e->m_bufferMs.load()) * 1000, nullptr);
+}
+
 void AudioEngine::aboutToFinish() {
     if (!m_gapless || !m_next.isValid() || m_next.startMs > 0) return;   // gapless needs a whole-file next item
     if (m_crossfadeMs > 0 && m_curDur > 2LL * m_crossfadeMs) return;    // crossfade owns this transition
@@ -93,6 +100,7 @@ void AudioEngine::ensureDeck(int i) {
     if (!d.play) { qCritical("GStreamer 'playbin' is unavailable"); return; }
     gst_util_set_object_arg(G_OBJECT(d.play), "flags", "audio+soft-volume");   // audio only: no video/text/vis
     g_signal_connect(d.play, "about-to-finish", G_CALLBACK(&AudioEngine::onAboutToFinish), &d.ctx);
+    g_signal_connect(d.play, "deep-element-added", G_CALLBACK(&AudioEngine::onDeepElement), this);
     GstBus *b = gst_element_get_bus(d.play);
     gst_bus_set_sync_handler(b, &AudioEngine::busSync, &d.ctx, nullptr);
     gst_object_unref(b);

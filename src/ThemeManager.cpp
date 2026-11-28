@@ -86,11 +86,17 @@ void ThemeManager::recompute() {
     p.dark = dark;
     if (dark) {   // Figma "Dark"
         p.bg = QColor("#151817"); p.side = QColor("#111411"); p.panel = QColor("#1c201d"); p.line = QColor("#30362f");
-        p.text = QColor("#f1f3ec"); p.muted = QColor("#a7afa1"); p.accent = QColor("#85b8ff"); p.tint = QColor("#213650");
+        p.text = QColor("#f1f3ec"); p.muted = QColor("#a7afa1"); p.accent = QColor("#85b8ff");
     } else {      // Figma "Light"
         p.bg = QColor("#f6f7f2"); p.side = QColor("#edf0e8"); p.panel = QColor("#ffffff"); p.line = QColor("#dbe0d5");
-        p.text = QColor("#20271d"); p.muted = QColor("#596451"); p.accent = QColor("#1d4ed8"); p.tint = QColor("#e4eeff");
+        p.text = QColor("#20271d"); p.muted = QColor("#596451"); p.accent = QColor("#1d4ed8");
     }
+    struct Ac { const char *name, *dark, *light; };   // Appearance > Accent color
+    static const Ac accents[] = {{"sage", "#c2e99c", "#355e24"}, {"blue", "#85b8ff", "#1d4ed8"}, {"lavender", "#baa1e0", "#baa1e0"}, {"amber", "#ebba66", "#ebba66"}};
+    const QString acc = m_set->value("ui/accent", QString("blue")).toString();
+    for (const Ac &a : accents) if (acc == a.name) p.accent = QColor(dark ? a.dark : a.light);
+    const float ah = p.accent.hslHueF() < 0 ? 0.f : p.accent.hslHueF();
+    p.tint = dark ? QColor::fromHslF(ah, 0.42f, 0.21f) : QColor::fromHslF(ah, 1.0f, 0.945f);
     if (m_set->flag("ui/artColors", false) && m_art.isValid()) {   // Figma "Artwork": tones taken from the playing album
         const float h = m_art.hslHueF() < 0 ? 0.f : m_art.hslHueF(), s = qBound(0.25f, m_art.hslSaturationF(), 0.7f);
         if (dark) {

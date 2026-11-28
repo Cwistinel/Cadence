@@ -58,7 +58,7 @@ QVariantMap PlaybackController::trackMap() const {
 
 // ---------- setters ----------
 
-void PlaybackController::setVolume(double v) { m_engine->setVolume(v); emit volumeChanged(); scheduleSave(); }
+void PlaybackController::setVolume(double v) { m_engine->setVolume(qMin(v, m_set->number("audio/maxVolume", 1.0))); emit volumeChanged(); scheduleSave(); }
 void PlaybackController::setMuted(bool m) { m_engine->setMuted(m); emit volumeChanged(); }
 void PlaybackController::volumeBy(double d) { setVolume(volume() + d); }
 void PlaybackController::setSpeed(double s) { m_set->setValue("audio/speed", qBound(0.5, s, 2.0)); }   // applied by onSetting()
@@ -84,7 +84,7 @@ void PlaybackController::setDevice(const QString &name) {
 // ---------- settings -> engine ----------
 
 void PlaybackController::applyAll() {
-    for (const char *k : {"audio/gapless", "audio/crossfadeMs", "audio/speed", "audio/eqEnabled", "audio/device"}) onSetting(QString::fromLatin1(k));
+    for (const char *k : {"audio/gapless", "audio/crossfadeMs", "audio/speed", "audio/eqEnabled", "audio/device", "audio/bufferMs", "audio/maxVolume"}) onSetting(QString::fromLatin1(k));
 }
 
 void PlaybackController::onSetting(const QString &k) {
@@ -93,6 +93,8 @@ void PlaybackController::onSetting(const QString &k) {
     else if (k == "audio/speed") { m_engine->setSpeed(m_set->value(k, 1.0).toDouble()); emit speedChanged(); }
     else if (k == "audio/eqEnabled" || k == "audio/eqGains") applyEq();
     else if (k == "audio/device") m_engine->setDevice(m_set->value(k, QString()).toString());
+    else if (k == "audio/maxVolume") setVolume(volume());
+    else if (k == "audio/bufferMs") m_engine->setBufferMs(m_set->value(k, 200).toInt());
     else if (k == "audio/replayGain") restartCurrent();
 }
 
@@ -400,13 +402,16 @@ void PlaybackController::restore() {
     m_q.insert(0, TrackDb::loadMany(ids));
     m_shuffle = get("shuffle") == "true";
     m_repeat = qBound(0, get("repeat", "0").toInt(), 2);
-    m_engine->setVolume(get("volume", "0.8").toDouble());
+    const QString ss = m_set->value("playback/shuffleStart", QString("last")).toString(), rs = m_set->value("playback/repeatStart", QString("off")).toString();
+    if (ss == "on" || ss == "off") m_shuffle = ss == "on";
+    if (rs != "last") m_repeat = rs == "all" ? 1 : rs == "one" ? 2 : 0;
+    m_engine->setVolume(m_set->flag("audio/rememberVolume", true) ? get("volume", "0.8").toDouble() : 0.8);
     const int saved = m_q.indexOfId(get("trackId").toLongLong());
     m_cur = saved >= 0 ? saved : (m_q.count() ? 0 : -1);
     resetOrder();
     if (m_cur < 0) return;
     m_q.setCurrent(m_cur);
-    const qint64 pos = saved >= 0 ? get("position").toLongLong() : 0, dur = m_q.at(m_cur).durationMs;
+    const qint64 pos = saved >= 0 && m_set->flag("playback/resume", true) ? get("position").toLongLong() : 0, dur = m_q.at(m_cur).durationMs;
     m_pos = dur > 0 && pos >= dur - 1000 ? 0 : pos;   // no engine is opened here: playback starts lazily on the first play()
     armNext();
 }

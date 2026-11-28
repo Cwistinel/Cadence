@@ -16,6 +16,7 @@ ApplicationWindow {
     property var detail: ({})              // arguments of the album / artist detail pages
     property string libTab: "albums"
     property string pendingQuery: ""
+    property string settingsBack: "songs"
     readonly property string navKey: page === "songs" || page === "albums" || page === "artists" || page === "folders" || page === "album" || page === "artist" ? "library"
     : page === "playlist" || page === "playlists" ? "playlists" : page === "home" || page === "played" || page === "added" || page === "favorites" ? page : ""
 
@@ -65,6 +66,7 @@ ApplicationWindow {
     function addSongs(id) { addDlg.show(id) }
     function askName(title, initial, cb) { nameDlg.mode = initial === "" ? "create" : "rename"; nameDlg.count = 0; nameDlg.cb = cb; nameDlg.show(initial) }
     function confirm(text, cb) { confirmDlg.ask(qsTr("Please confirm"), text, "", qsTr("Confirm"), cb) }
+    function ask(heading, msg, body, primary, cb, accentNote) { confirmDlg.ask(heading, msg, body, primary, cb, accentNote) }
     function openMeta(id) { metaDlg.edit(id) }
     function editLyrics() { lyricsDlg.edit() }
     function toast(t) { toastText.text = t; toastBox.opacity = 1; toastTimer.restart() }
@@ -102,6 +104,7 @@ ApplicationWindow {
     }
     onPageChanged: {
         if (page !== "now") backPage = page
+        if (page !== "settings") settingsBack = page
         if (["songs", "albums", "artists", "folders"].indexOf(page) >= 0) libTab = page
         if (!ready) return
         pageIn.restart()
@@ -129,24 +132,24 @@ ApplicationWindow {
     }
 
     // ---------- shortcuts (application-wide; text fields keep their own keys) ----------
-    Shortcut { context: Qt.ApplicationShortcut; sequence: "Space"; onActivated: pc.togglePlayPause() }
+    Shortcut { context: Qt.ApplicationShortcut; sequence: (settings.revision, settings.text("keys/playPause", "Space")); onActivated: pc.togglePlayPause() }
     Shortcut { context: Qt.ApplicationShortcut; sequence: "Left"; onActivated: pc.seekBy(-5000) }
     Shortcut { context: Qt.ApplicationShortcut; sequence: "Right"; onActivated: pc.seekBy(5000) }
-    Shortcut { context: Qt.ApplicationShortcut; sequence: "Ctrl+Left"; onActivated: pc.previous() }
-    Shortcut { context: Qt.ApplicationShortcut; sequence: "Ctrl+Right"; onActivated: pc.next() }
-    Shortcut { context: Qt.ApplicationShortcut; sequence: "Ctrl+Up"; onActivated: pc.volumeBy(0.05) }
-    Shortcut { context: Qt.ApplicationShortcut; sequence: "Ctrl+Down"; onActivated: pc.volumeBy(-0.05) }
+    Shortcut { context: Qt.ApplicationShortcut; sequence: (settings.revision, settings.text("keys/prev", "Ctrl+Left")); onActivated: pc.previous() }
+    Shortcut { context: Qt.ApplicationShortcut; sequence: (settings.revision, settings.text("keys/next", "Ctrl+Right")); onActivated: pc.next() }
+    Shortcut { context: Qt.ApplicationShortcut; sequence: (settings.revision, settings.text("keys/volUp", "Ctrl+Up")); onActivated: pc.volumeBy(0.05) }
+    Shortcut { context: Qt.ApplicationShortcut; sequence: (settings.revision, settings.text("keys/volDown", "Ctrl+Down")); onActivated: pc.volumeBy(-0.05) }
     Shortcut { context: Qt.ApplicationShortcut; sequence: "M"; onActivated: pc.muted = !pc.muted }
-    Shortcut { context: Qt.ApplicationShortcut; sequence: "Q"; onActivated: win.rightPanel = !win.rightPanel }
-    Shortcut { context: Qt.ApplicationShortcut; sequence: "L"; onActivated: win.toggleLyrics() }
+    Shortcut { context: Qt.ApplicationShortcut; sequence: (settings.revision, settings.text("keys/queue", "Ctrl+Q")); onActivated: win.rightPanel = !win.rightPanel }
+    Shortcut { context: Qt.ApplicationShortcut; sequence: (settings.revision, settings.text("keys/lyrics", "Ctrl+L")); onActivated: win.toggleLyrics() }
     Shortcut { context: Qt.ApplicationShortcut; sequence: "F"; onActivated: pc.toggleFavorite() }
     Shortcut { context: Qt.ApplicationShortcut; sequence: "Ctrl+M"; onActivated: win.miniMode = !win.miniMode }
     Shortcut { context: Qt.ApplicationShortcut; sequence: "Ctrl+Z"; onActivated: undo.undo() }
-    Shortcut { context: Qt.ApplicationShortcut; sequence: "Media Play"; onActivated: pc.togglePlayPause() }
-    Shortcut { context: Qt.ApplicationShortcut; sequence: "Media Pause"; onActivated: pc.pause() }
-    Shortcut { context: Qt.ApplicationShortcut; sequence: "Media Stop"; onActivated: pc.stop() }
-    Shortcut { context: Qt.ApplicationShortcut; sequence: "Media Next"; onActivated: pc.next() }
-    Shortcut { context: Qt.ApplicationShortcut; sequence: "Media Previous"; onActivated: pc.previous() }
+    Shortcut { context: Qt.ApplicationShortcut; enabled: (settings.revision, settings.flag("ui/mediaKeys", true)); sequence: "Media Play"; onActivated: pc.togglePlayPause() }
+    Shortcut { context: Qt.ApplicationShortcut; enabled: (settings.revision, settings.flag("ui/mediaKeys", true)); sequence: "Media Pause"; onActivated: pc.pause() }
+    Shortcut { context: Qt.ApplicationShortcut; enabled: (settings.revision, settings.flag("ui/mediaKeys", true)); sequence: "Media Stop"; onActivated: pc.stop() }
+    Shortcut { context: Qt.ApplicationShortcut; enabled: (settings.revision, settings.flag("ui/mediaKeys", true)); sequence: "Media Next"; onActivated: pc.next() }
+    Shortcut { context: Qt.ApplicationShortcut; enabled: (settings.revision, settings.flag("ui/mediaKeys", true)); sequence: "Media Previous"; onActivated: pc.previous() }
 
     // ---------- sidebar navigation row ----------
     component NavItem: Rectangle {
@@ -185,6 +188,7 @@ ApplicationWindow {
             // ----- sidebar (208 px) -----
             Rectangle {
                 id: side
+                visible: win.page !== "settings"
                 Layout.fillHeight: true
                 Layout.preferredWidth: win.collapsed ? 72 : 208
                 Behavior on Layout.preferredWidth { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }

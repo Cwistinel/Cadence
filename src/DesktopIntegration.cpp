@@ -20,7 +20,8 @@ DesktopIntegration::DesktopIntegration(PlaybackController *pc, Settings *s, QObj
         m_tray->setToolTip("Cadence");
         connect(m_tray, &QSystemTrayIcon::activated, this, [this](QSystemTrayIcon::ActivationReason r) { if (r == QSystemTrayIcon::Trigger) emit toggleRequested(); });
         connect(pc, &PlaybackController::stateChanged, this, [this] { m_play->setText(m_pc->playing() ? tr("Pause") : tr("Play")); });
-        m_tray->show();
+        m_tray->setVisible(m_set->flag("ui/tray", true));
+        connect(s, &Settings::changed, this, [this](const QString &k) { if (k == "ui/tray") m_tray->setVisible(m_set->flag("ui/tray", true)); });
     }
     if (m_n.isValid()) {
         const QDBusReply<QStringList> caps = m_n.call("GetCapabilities");
@@ -50,7 +51,9 @@ void DesktopIntegration::notify() {
     if (!ArtworkManager::image(t.id).isNull()) hints["image-path"] = ArtworkManager::cacheDir() + '/' + ArtworkManager::key(t.id) + ".jpg";
     const QStringList actions = m_actions ? QStringList{"prev", tr("Previous"), "playpause", tr("Play/Pause"), "next", tr("Next")} : QStringList();
     const QString title = m_pc->trackMap().value("title").toString();
-    const QString body = t.artist.isEmpty() ? t.album : (t.album.isEmpty() ? t.artist : t.artist + QStringLiteral(" — ") + t.album);
+    const QString detail = m_set->value("ui/notificationDetail", QString("artist")).toString();
+    const QString body = detail == "title" ? QString()
+        : detail == "full" ? (t.artist.isEmpty() ? t.album : (t.album.isEmpty() ? t.artist : t.artist + QStringLiteral(" — ") + t.album)) : t.artist;
     const QDBusReply<uint> r = m_n.call("Notify", QStringLiteral("Cadence"), m_nid, QStringLiteral("cadence"), title, body, actions, hints, 4000);
     if (r.isValid()) m_nid = r.value();
 }

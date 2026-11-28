@@ -14,7 +14,7 @@ class DesktopIntegration : public QObject {
 public:
     DesktopIntegration(PlaybackController *pc, Settings *settings, QObject *parent = nullptr);
     bool trayAvailable() const { return m_tray != nullptr; }
-    Q_INVOKABLE bool closeToTray() const { return m_tray && m_set->flag("ui/closeToTray", false); }
+    Q_INVOKABLE bool closeToTray() const { return m_tray && m_tray->isVisible() && m_set->flag("ui/closeToTray", false); }
 public slots:
     void quit();
 signals:

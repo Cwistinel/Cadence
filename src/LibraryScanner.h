@@ -28,6 +28,13 @@ public:
     QVariantMap stats() const;
     QString lastScanText() const;
     Q_INVOKABLE QString formatInfo(qint64 trackId) const;   // "FLAC · 24-bit / 96 kHz" (cached per track)
+    Q_INVOKABLE int folderTracks(const QString &path) const;
+    Q_INVOKABLE QVariantList listFolders(const QString &dir) const;   // sub-folders for the "Choose a music folder" dialog
+    Q_INVOKABLE QString homePath() const;
+    Q_INVOKABLE QString musicPath() const;
+    Q_INVOKABLE bool isReadable(const QString &path) const;
+    Q_INVOKABLE qint64 artworkCacheBytes() const;
+    Q_INVOKABLE void clearArtworkCache();
 
 public slots:
     void addFolder(const QString &path);              // path or file: URL
@@ -36,7 +43,7 @@ public slots:
     void rescan(const QString &path);                 // a library folder, or any directory inside one (incremental)
     void importPaths(const QVariantList &urls);       // dropped files (-> imported(ids)), .cue files, folders (-> addFolder)
     void cancel();
-    QVariantList duplicates();                        // [{reason, tracks:[{id,title,artist,album,path,durationMs,size}]}]
+    QVariantList duplicates(int toleranceMs = 3000);   // [{reason, tracks:[...]}]; tolerance = length difference that still counts as "same length"
     void clearHistory();
     void reloadFolders() { loadFolders(); emit foldersChanged(); }   // after a restore replaced the folders table
     void showInFolder(qint64 trackId);                // opens the track's folder in the file manager

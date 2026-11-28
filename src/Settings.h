@@ -1,5 +1,6 @@
 #pragma once
 #include <QDir>
+#include <QKeySequence>
 #include <QObject>
 #include <QSettings>
 #include <QStandardPaths>
@@ -16,6 +17,10 @@ public:
     Q_INVOKABLE bool flag(const QString &k, bool d = false) const { return m_s.value(k, d).toBool(); }
     Q_INVOKABLE double number(const QString &k, double d = 0) const { return m_s.value(k, d).toDouble(); }
     Q_INVOKABLE QString text(const QString &k, const QString &d = {}) const { return m_s.value(k, d).toString(); }
+    Q_INVOKABLE QString keyString(int key, int mods) const {   // for the "Edit shortcut" dialog: Qt key event -> "Ctrl+Right"
+        if (key == Qt::Key_Control || key == Qt::Key_Shift || key == Qt::Key_Alt || key == Qt::Key_Meta || key == 0) return {};
+        return QKeySequence(QKeyCombination(Qt::KeyboardModifiers(mods), Qt::Key(key))).toString(QKeySequence::PortableText);
+    }
     Q_INVOKABLE void setValue(const QString &k, const QVariant &v) {
         if (m_s.contains(k) && m_s.value(k) == v) return;
         m_s.setValue(k, v); m_s.sync(); ++m_rev; emit changed(k); emit revisionChanged();

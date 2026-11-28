@@ -63,6 +63,12 @@ private slots:
         QCOMPARE(count("SELECT COUNT(*) FROM tracks WHERE path=?", {b}), 1);                                        // same row came back
     }
     void originalsAreUntouched() { QCOMPARE(state(root + "/album"), before); }
+    void duplicatesToleranceGroupsCloseLengths() {
+        writeWav(root + "/dup1/song.wav", 6); writeWav(root + "/dup2/song.wav", 7);
+        scanWait(root);
+        QVERIFY(!sc->duplicates(5000).isEmpty());   // 1 s apart: same 5 s bucket
+        QVERIFY(sc->duplicates(1000).isEmpty());    // different 1 s buckets
+    }
 };
 
 CADENCE_TEST_MAIN(TstLibrary)

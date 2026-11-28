@@ -11,8 +11,10 @@
 #include <QFileInfo>
 #include <QMap>
 #include <QSet>
+#include <QStandardPaths>
 #include <QUrl>
 #include <QDesktopServices>
+#include "ArtworkManager.h"
 
 namespace {
 const QSet<QString> kExt{"mp3", "aac", "m4a", "flac", "ogg", "oga", "opus", "wav", "amr", "awb"};
@@ -284,8 +286,10 @@ void LibraryScanner::scan(const Job &j, QVariantList &outIds, QString &msg) {
 
 // ---------- duplicates, history ----------
 
-QVariantList LibraryScanner::duplicates() {
-    auto members = [](const QString &where, const QVariantList &a) {
+QVariantList LibraryScanner::duplicates(int toleranceMs) {
+    const int tol = qMax(500, toleranceMs);
+    auto members = [tol](const QString &where, const QVariantList &a) {
+        Q_UNUSED(tol)
         QVariantList l;
         QSqlQuery q = Database::run("SELECT id,title,artist,album,path,duration_ms,size FROM v_tracks WHERE start_ms=0 AND end_ms=0 AND " + where + " ORDER BY path", a);
         while (q.next()) {
@@ -300,10 +304,10 @@ QVariantList LibraryScanner::duplicates() {
     QVariantList out;
     QSqlQuery g = Database::run("SELECT hash FROM v_tracks WHERE hash<>'' AND start_ms=0 AND end_ms=0 GROUP BY hash HAVING COUNT(*)>1 LIMIT 200");
     while (g.next()) out << group(tr("Identical file content"), members("hash=?", {g.value(0)}));
-    QSqlQuery t = Database::run("SELECT lower(title),lower(artist),lower(album),duration_ms/2000 FROM v_tracks WHERE title<>'' AND start_ms=0 AND end_ms=0 "
-                                "GROUP BY 1,2,3,4 HAVING COUNT(*)>1 AND COUNT(DISTINCT hash)>1 LIMIT 200");
+    QSqlQuery t = Database::run(QStringLiteral("SELECT lower(title),lower(artist),lower(album),duration_ms/%1 FROM v_tracks WHERE title<>'' AND start_ms=0 AND end_ms=0 "
+                                               "GROUP BY 1,2,3,4 HAVING COUNT(*)>1 AND COUNT(DISTINCT hash)>1 LIMIT 200").arg(tol));
     while (t.next()) out << group(tr("Same title, artist, album and length"),
-        members("lower(title)=? AND lower(artist)=? AND lower(album)=? AND duration_ms/2000=?", {t.value(0), t.value(1), t.value(2), t.value(3)}));
+        members(QStringLiteral("lower(title)=? AND lower(artist)=? AND lower(album)=? AND duration_ms/%1=?").arg(tol), {t.value(0), t.value(1), t.value(2), t.value(3)}));
     return out;
 }
 
@@ -353,4 +357,34 @@ QString LibraryScanner::formatInfo(qint64 id) const {
     const QString s = q.next() ? Metadata::format(q.value(0).toString()) : QString();
     cache.insert(id, s);
     return s;
+}
+
+int LibraryScanner::folderTracks(const QString &p) const {
+    QSqlQuery q = Database::run("SELECT COUNT(*) FROM v_tracks WHERE dir=? OR substr(dir,1,length(?)+1)=?||'/'", {p, p, p});
+    return q.next() ? q.value(0).toInt() : 0;
+}
+
+QVariantList LibraryScanner::listFolders(const QString &dir) const {
+    QVariantList out;
+    const QDir d(dir.isEmpty() ? QDir::homePath() : dir);
+    for (const QFileInfo &f : d.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot | QDir::Readable, QDir::Name | QDir::IgnoreCase))
+        if (!f.fileName().startsWith('.')) out << QVariantMap{{"name", f.fileName()}, {"path", f.absoluteFilePath()}};
+    return out;
+}
+
+QString LibraryScanner::homePath() const { return QDir::homePath(); }
+QString LibraryScanner::musicPath() const { const QString m = QStandardPaths::writableLocation(QStandardPaths::MusicLocation); return m.isEmpty() ? QDir::homePath() : m; }
+bool LibraryScanner::isReadable(const QString &p) const { const QFileInfo fi(p); return fi.isDir() && fi.isReadable(); }
+
+qint64 LibraryScanner::artworkCacheBytes() const {
+    qint64 n = 0;
+    QDirIterator it(ArtworkManager::cacheDir(), QDir::Files);
+    while (it.hasNext()) { it.next(); n += it.fileInfo().size(); }
+    return n;
+}
+
+void LibraryScanner::clearArtworkCache() {
+    const QDir d(ArtworkManager::cacheDir());
+    for (const QString &f : d.entryList(QDir::Files)) QFile::remove(d.filePath(f));
+    emit libraryChanged();
 }

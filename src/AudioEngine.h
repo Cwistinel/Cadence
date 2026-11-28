@@ -49,6 +49,7 @@ public:
     void setCrossfade(int ms) { m_crossfadeMs = qMax(0, ms); }   // 0 = off
     void setEqualizer(bool on, const QList<double> &gainsDb);    // 10 bands, dB
     void setDevice(const QString &name);
+    void setBufferMs(int ms) { m_bufferMs = ms; }
 
 signals:
     void stateChanged();
@@ -96,6 +97,7 @@ private:
     static GstBusSyncReply busSync(GstBus *, GstMessage *m, gpointer u);
     static GstBusSyncReply monSync(GstBus *, GstMessage *m, gpointer u);
     static void onAboutToFinish(GstElement *, gpointer u);
+    static void onDeepElement(GstBin *, GstBin *, GstElement *el, gpointer u);
 
     Deck m_deck[2];
     int m_cur = 0;
@@ -110,6 +112,7 @@ private:
     PlayItem m_next, m_advItem;
     std::atomic<bool> m_advancePending{false}, m_gapless{true};
     std::atomic<int> m_crossfadeMs{0};
+    std::atomic<int> m_bufferMs{200};
     std::atomic<qint64> m_curDur{0};
     bool m_fading = false;
     int m_fadeTo = 1;
